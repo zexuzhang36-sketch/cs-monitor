@@ -97,9 +97,14 @@ def send_alert_email(message: str):
         <tr><td style="padding:10px;border:1px solid #ddd;font-size:13px;">
         <p style="color:#888;">{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | csqaq.com</p></td></tr></table>"""
         msg.attach(MIMEText(body, "html", "utf-8"))
-        with smtplib.SMTP_SSL(cfg["smtp_server"], cfg["smtp_port"]) as s:
-            s.login(cfg["sender_email"], cfg["auth_code"])
-            s.sendmail(cfg["sender_email"], cfg["receiver_email"], msg.as_string())
+        if cfg["smtp_port"] == 587:
+            server = smtplib.SMTP(cfg["smtp_server"], cfg["smtp_port"], timeout=15)
+            server.starttls()
+        else:
+            server = smtplib.SMTP_SSL(cfg["smtp_server"], cfg["smtp_port"], timeout=15)
+        server.login(cfg["sender_email"], cfg["auth_code"])
+        server.sendmail(cfg["sender_email"], cfg["receiver_email"], msg.as_string())
+        server.quit()
         print(f"[EMAIL] 已发送")
     except Exception as e:
         print(f"[EMAIL] 失败: {e}")
@@ -564,9 +569,14 @@ def api_email_test():
         msg["From"] = cfg["sender_email"]; msg["To"] = cfg["receiver_email"]
         msg["Subject"] = "[CS2] 测试邮件"
         msg.attach(MIMEText(f"<h3>CS2 行情监控</h3><p>配置成功!</p><p style='color:#888'>{datetime.now()}</p>", "html", "utf-8"))
-        with smtplib.SMTP_SSL(cfg["smtp_server"], cfg["smtp_port"]) as s:
-            s.login(cfg["sender_email"], cfg["auth_code"])
-            s.sendmail(cfg["sender_email"], cfg["receiver_email"], msg.as_string())
+        if cfg["smtp_port"] == 587:
+            server = smtplib.SMTP(cfg["smtp_server"], cfg["smtp_port"], timeout=15)
+            server.starttls()
+        else:
+            server = smtplib.SMTP_SSL(cfg["smtp_server"], cfg["smtp_port"], timeout=15)
+        server.login(cfg["sender_email"], cfg["auth_code"])
+        server.sendmail(cfg["sender_email"], cfg["receiver_email"], msg.as_string())
+        server.quit()
         return jsonify({"ok": True, "msg": "已发送"})
     except Exception as e: return jsonify({"ok": False, "msg": str(e)}), 500
 
