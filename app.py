@@ -244,8 +244,15 @@ def check_skin_volume():
             volume = gd.get("turnover_number") or 0
             if not price or not volume: continue
 
-            prev_vol = skin["current_volume"] or 0
-            # 成交量增量 = 当前总成交量 - 上次总成交量
+            # 1小时成交量 = 当前总成交量 - 1小时前总成交量
+            hour_ago = (datetime.now() - timedelta(hours=1)).isoformat()
+            conn3 = sqlite3.connect(str(DB_PATH))
+            prev_row = conn3.execute(
+                "SELECT volume FROM volume_snapshots WHERE skin_id=? AND captured_at<=? ORDER BY captured_at DESC LIMIT 1",
+                (skin["skin_id"], hour_ago)
+            ).fetchone()
+            conn3.close()
+            prev_vol = prev_row[0] if prev_row else 0
             spike = volume - prev_vol if prev_vol > 0 else 0
             threshold = get_volume_threshold(price)
 
@@ -271,7 +278,7 @@ def check_skin_volume():
             if spike >= threshold:
                 alerts += 1
                 direction = "放量暴涨" if price > (skin["current_price"] or price) else "放量异动"
-                msg = f"[{direction}] {skin['skin_name']} 15min成交{spike}件(阈{threshold}) ¥{price:.2f}"
+                msg = f"[{direction}] {skin['skin_name']} 1h成交{spike}件(阈{threshold}) ¥{price:.2f}"
                 _save_alert(skin["skin_name"], "volume_spike", msg)
                 send_alert_notification(msg)
                 print(f"[VOLUME] {msg}")

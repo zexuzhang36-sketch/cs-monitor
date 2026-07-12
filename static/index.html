@@ -186,7 +186,7 @@ a{color:var(--accent)}
   <!-- TAB: 皮肤监控 -->
   <div id="tab-skins" style="display:none">
     <div class="ptitle">成交量异动监控
-      <span style="font-size:.7rem;color:var(--dim);font-weight:400;">| ¥100↓≥50件 ¥100~1k≥20 ¥1k~10k≥10 ¥10k↑≥5</span>
+      <span style="font-size:.7rem;color:var(--dim);font-weight:400;">| 1小时成交 ¥100↓≥50件 ¥100~1k≥20 ¥1k~10k≥10 ¥10k↑≥5</span>
     </div>
     <div class="panel" style="overflow-x:auto">
       <table class="tbl"><thead><tr><th>名称</th><th>价格</th><th>15min成交</th><th>阈值</th><th>总成交</th><th>操作</th></tr></thead>
@@ -335,10 +335,11 @@ function loadRank(type,btn){
 function loadHotSeries(){
   fetch('/api/hot-series').then(function(r){return r.json()}).then(function(list){
     if(!list.length){document.getElementById('hotCards').innerHTML='<div class="nodata">暂无</div>';return}
-    document.getElementById('hotCards').innerHTML=list.slice(0,20).map(function(s){
-      return '<div class="card"><div class="cname">'+(s.name||s.seriesName||'')+'</div>'+
-        '<div class="cprice">'+(s.avgPrice?s.avgPrice.toFixed(2):'--')+'</div>'+
-        '<div style="font-size:.72rem;color:var(--dim);">'+(s.count||0)+'件</div></div>';
+    document.getElementById('hotCards').innerHTML=list.slice(0,24).map(function(s){
+      var chg=s.sell_price_1||0,cls=chg>0?'up':(chg<0?'down':'flat');
+      return '<div class="card"><div class="cname">'+s.name+'<span style="font-size:.68rem;color:var(--dim);"> '+s.amount+'件</span></div>'+
+        '<div class="cprice">'+(s.total_value?s.total_value.toFixed(0):'--')+'</div>'+
+        '<div style="font-size:.72rem;" class="'+cls+'">1日 '+(chg>0?'+':'')+chg.toFixed(2)+'% | 7日 '+(s.sell_price_7>0?'+':'')+(s.sell_price_7||0).toFixed(2)+'%</div></div>';
     }).join('');
   });
 }
