@@ -15,15 +15,16 @@ from email.mime.multipart import MIMEMultipart
 from pathlib import Path
 
 import requests
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
-app = Flask(__name__, static_folder=".")
+app = Flask(__name__, static_folder="static")
 CORS(app)
 
 BASE_URL = "https://api.csqaq.com/api/v1"
 DB_PATH = Path(__file__).parent / "cs_monitor.db"
-HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json"}
+API_TOKEN = "XGCWH1F7Y8U3P8X7L3F7G6X3"
+HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json", "ApiToken": API_TOKEN}
 
 # 指数中文名映射
 INDEX_NAMES = {
@@ -89,6 +90,31 @@ def init_db():
                 auth_code TEXT NOT NULL DEFAULT '',
                 receiver_email TEXT NOT NULL DEFAULT '',
                 enabled INTEGER DEFAULT 0
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS skin_monitor (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                skin_id INTEGER NOT NULL UNIQUE,
+                skin_name TEXT NOT NULL,
+                current_price REAL DEFAULT 0,
+                last_volume INTEGER DEFAULT 0,
+                current_volume INTEGER DEFAULT 0,
+                prev_volume INTEGER DEFAULT 0,
+                alert_threshold INTEGER DEFAULT 15,
+                vol_spike INTEGER DEFAULT 0,
+                enabled INTEGER DEFAULT 1,
+                last_checked TEXT,
+                added_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS volume_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                skin_id INTEGER NOT NULL,
+                volume INTEGER NOT NULL,
+                price REAL,
+                captured_at TEXT NOT NULL
             )
         """)
         conn.commit()
@@ -158,13 +184,20 @@ def send_alert_email(message: str):
         msg = MIMEMultipart()
         msg["From"] = cfg["sender_email"]
         msg["To"] = cfg["receiver_email"]
-        msg["Subject"] = f"[CS2行情异动] {message[:50]}"
+        is_up = "大涨" in message
+        color = "#27ae60" if is_up else "#e74c3c"
+        msg["Subject"] = f"[CS2] {message[:60]}"
 
         body = f"""
-        <h3>CS2 饰品行情异动提醒</h3>
-        <p style='font-size:16px'><b>{message}</b></p>
-        <p style='color:#888'>时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
-        <p style='color:#888'>数据来源: csqaq.com</p>
+        <h2>CS2 饰品行情异动</h2>
+        <table style="border-collapse:collapse;max-width:480px;">
+        <tr style="background:{color};color:#fff;">
+          <td style="padding:10px 14px;font-weight:bold;font-size:15px;">{message}</td>
+        </tr>
+        <tr><td style="padding:12px;border:1px solid #ddd;font-size:14px;">
+          <p style="color:#888;margin-top:8px;font-size:11px;">监控系统 | csqaq.com</p>
+          <p style="color:#aaa;font-size:11px;">{datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+        </td></tr></table>
         """
         msg.attach(MIMEText(body, "html", "utf-8"))
 
@@ -217,13 +250,13 @@ def collect_and_store():
 
 
 def collector_loop():
-    """后台定时采集线程 (每 60 秒)"""
+    """后台定时采集线程 (每 20 秒, 快速积累数据)"""
     while True:
         try:
             collect_and_store()
         except Exception as e:
             print(f"[ERROR] 采集异常: {e}")
-        time.sleep(60)
+        time.sleep(20)
 
 
 # ─── API 路由 ────────────────────────────
@@ -246,8 +279,10 @@ def api_indices():
 
 @app.route("/api/history/<name_key>")
 def api_history(name_key: str):
-    """获取某个指数的历史数据"""
-    hours = request.args.get("hours", 24, type=int)
+    """获取某个指数的历史走势数据"""
+    period = request.args.get("period", "24h")  # 1h / 24h / 7d
+    period_map = {"1h": 1, "2h": 2, "24h": 24, "7d": 168}
+    hours = period_map.get(period, 24)
     since = (datetime.now() - timedelta(hours=hours)).isoformat()
 
     with sqlite3.connect(str(DB_PATH)) as conn:
@@ -256,7 +291,58 @@ def api_history(name_key: str):
             "SELECT market_index, captured_at FROM market_snapshots WHERE name_key=? AND captured_at>=? ORDER BY captured_at ASC",
             (name_key, since),
         ).fetchall()
-    return jsonify([dict(r) for r in rows])
+
+    raw = [dict(r) for r in rows]
+    if not raw:
+        return jsonify({"points": [], "count": 0})
+
+    # 对于短周期返回原始数据点, 长周期聚合成 OHLC
+    if period in ("1h", "2h"):
+        points = [{"t": r["captured_at"][5:19].replace("T", " "), "price": round(r["market_index"], 2)} for r in raw]
+        return jsonify({"points": points, "count": len(points)})
+
+    # 聚合为 OHLC bars
+    # 分时(24h): 每10分钟一根K线; 日线(7d): 每2小时一根
+    bucket_minutes = 10 if period == "24h" else 120
+    ohlc = []
+    bucket = []
+    bucket_start = None
+    for r in raw:
+        ts = r["captured_at"]
+        price = r["market_index"]
+        if not bucket:
+            bucket_start = ts
+        bucket.append(price)
+
+        # 检查是否应该切分
+        if bucket_start:
+            try:
+                start_dt = datetime.fromisoformat(bucket_start)
+                cur_dt = datetime.fromisoformat(ts)
+                if (cur_dt - start_dt).total_seconds() >= bucket_minutes * 60:
+                    ohlc.append({
+                        "t": bucket_start[5:19].replace("T", " "),
+                        "open": round(bucket[0], 2),
+                        "close": round(bucket[-1], 2),
+                        "high": round(max(bucket), 2),
+                        "low": round(min(bucket), 2),
+                    })
+                    bucket = []
+                    bucket_start = None
+            except ValueError:
+                pass
+
+    # 处理最后剩余数据
+    if bucket:
+        ohlc.append({
+            "t": bucket_start[5:19].replace("T", " ") if bucket_start else "",
+            "open": round(bucket[0], 2),
+            "close": round(bucket[-1], 2),
+            "high": round(max(bucket), 2),
+            "low": round(min(bucket), 2),
+        })
+
+    return jsonify({"points": ohlc, "count": len(ohlc), "raw_count": len(raw)})
 
 
 @app.route("/api/alerts")
@@ -289,7 +375,7 @@ def api_search():
     try:
         r = requests.get(
             f"{BASE_URL}/search/suggest",
-            params={"keyword": q, "limitNum": 10},
+            params={"text": q, "limitNum": 10},
             headers=HEADERS,
             timeout=10,
         )
@@ -302,10 +388,308 @@ def api_search():
 
 @app.route("/api/skin/<int:skin_id>")
 def api_skin_detail(skin_id: int):
-    """获取饰品详情"""
+    """获取饰品详情（价格、成交量、历史涨跌）"""
     try:
         r = requests.get(
             f"{BASE_URL}/info/good", params={"id": skin_id}, headers=HEADERS, timeout=10
+        )
+        if r.status_code == 200:
+            data = r.json().get("data", {})
+            goods = data.get("goods_info", {}) if data else {}
+            # 整理历史涨跌
+            history = []
+            for label, days in [("1天", 1), ("7天", 7), ("15天", 15), ("30天", 30), ("90天", 90), ("180天", 180), ("365天", 365)]:
+                rate = goods.get(f"sell_price_rate_{days}")
+                chg = goods.get(f"sell_price_{days}")
+                if rate is not None or chg is not None:
+                    history.append({"label": label, "days": days, "rate": rate, "change": chg})
+            goods["_price_history"] = history
+            return jsonify(goods)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify({})
+
+
+@app.route("/api/skin/<int:skin_id>/chart")
+def api_skin_chart(skin_id: int):
+    """获取饰品价格走势 (分时/日线/周线)"""
+    period = request.args.get("period", "7")  # 7=分时 30=日线 365=周线
+    try:
+        r = requests.post(
+            f"{BASE_URL}/info/chart",
+            json={
+                "good_id": str(skin_id),
+                "key": "sell_price",
+                "platform": 1,
+                "period": period,
+                "style": "all_style",
+            },
+            headers=HEADERS,
+            timeout=30,
+        )
+        if r.status_code != 200:
+            return jsonify({"error": f"API 返回 {r.status_code}"}), 500
+
+        data = r.json().get("data", {})
+        timestamps = data.get("timestamp", [])
+        prices = data.get("main_data", [])
+
+        if not timestamps or not prices:
+            return jsonify({"error": "无数据"}), 404
+
+        # 转换时间戳为可读日期
+        from datetime import timezone
+        points = []
+        for ts, price in zip(timestamps, prices):
+            # ts is milliseconds
+            dt = datetime.fromtimestamp(ts / 1000, tz=timezone.utc)
+            points.append({
+                "t": dt.strftime("%Y-%m-%d %H:%M"),
+                "ts": ts,
+                "price": round(price, 2),
+            })
+
+        return jsonify({"points": points, "count": len(points)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ─── 皮肤价格监控 ───────────────────────
+
+@app.route("/api/skin-monitor")
+def api_skin_monitor_list():
+    """列出所有监控的皮肤"""
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT * FROM skin_monitor ORDER BY added_at DESC").fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/skin-monitor/add", methods=["POST"])
+def api_skin_monitor_add():
+    """手动添加皮肤监控"""
+    data = request.get_json()
+    sid = data.get("skin_id")
+    name = data.get("skin_name", str(sid))
+    if not sid:
+        return jsonify({"error": "缺少 skin_id"}), 400
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        try:
+            conn.execute(
+                "INSERT OR REPLACE INTO skin_monitor (skin_id, skin_name, enabled, added_at) VALUES (?,?,1,?)",
+                (sid, name, datetime.now().isoformat()),
+            )
+            conn.commit()
+            return jsonify({"ok": True, "msg": f"已添加 {name} 监控"})
+        except Exception as e:
+            return jsonify({"ok": False, "msg": str(e)}), 500
+
+
+@app.route("/api/skin-monitor/volume")
+def api_skin_volume_list():
+    """查看所有皮肤成交量异动排行"""
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM skin_monitor WHERE current_volume>0 ORDER BY vol_spike DESC LIMIT 50"
+        ).fetchall()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/skin-monitor/remove", methods=["POST"])
+def api_skin_monitor_remove():
+    data = request.get_json()
+    sid = data.get("skin_id")
+    if not sid:
+        return jsonify({"error": "缺少 skin_id"}), 400
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.execute("DELETE FROM skin_monitor WHERE skin_id=?", (sid,))
+        conn.commit()
+    return jsonify({"ok": True})
+
+
+def get_volume_threshold(price: float) -> int:
+    """根据价格区间返回成交量异动阈值"""
+    if price <= 100:
+        return 50
+    elif price <= 1000:
+        return 20
+    elif price <= 10000:
+        return 10
+    else:
+        return 5
+
+
+def check_skin_volume():
+    """后台巡检所有皮肤成交量异动"""
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.row_factory = sqlite3.Row
+        skins = conn.execute("SELECT * FROM skin_monitor WHERE enabled=1").fetchall()
+
+    now = datetime.now().isoformat()
+    alert_count = 0
+
+    for skin in skins:
+        try:
+            r = requests.get(
+                f"{BASE_URL}/info/good", params={"id": skin["skin_id"]}, headers=HEADERS, timeout=10
+            )
+            if r.status_code != 200:
+                continue
+            goods = r.json().get("data", {}).get("goods_info", {})
+            if not goods:
+                continue
+
+            price = goods.get("buff_sell_price") or goods.get("yyyp_sell_price") or 0
+            volume = goods.get("turnover_number") or 0
+
+            if not price or not volume:
+                continue
+
+            # 记录成交量快照
+            with sqlite3.connect(str(DB_PATH)) as conn2:
+                conn2.execute(
+                    "INSERT INTO volume_snapshots (skin_id, volume, price, captured_at) VALUES (?,?,?,?)",
+                    (skin["skin_id"], volume, price, now),
+                )
+
+                # 查15分钟前的成交量
+                since = (datetime.now() - timedelta(minutes=15)).isoformat()
+                prev = conn2.execute(
+                    "SELECT volume FROM volume_snapshots WHERE skin_id=? AND captured_at<=? ORDER BY captured_at ASC LIMIT 1",
+                    (skin["skin_id"], since),
+                ).fetchone()
+
+                prev_vol = prev[0] if prev else 0
+                vol_change = volume - prev_vol if prev_vol > 0 else 0
+
+                threshold = get_volume_threshold(price)
+
+                conn2.execute(
+                    "UPDATE skin_monitor SET current_price=?, current_volume=?, prev_volume=?, vol_spike=?, alert_threshold=?, last_checked=? WHERE skin_id=?",
+                    (price, volume, prev_vol, vol_change, threshold, now, skin["skin_id"]),
+                )
+                conn2.commit()
+
+            # 判断异动
+            if vol_change >= threshold:
+                alert_count += 1
+                direction = "放量暴涨" if price > (skin["current_price"] or price) else "放量异动"
+                msg = f"[{direction}] {skin['skin_name']} 15分钟成交{vol_change}件 (阈值{threshold}件) | 当前¥{price:.2f}"
+                _save_alert(skin["skin_name"], "volume_spike", msg)
+                send_alert_email(msg)
+                print(f"[VOLUME ALERT] {msg}")
+
+            time.sleep(1.2)
+        except Exception as e:
+            print(f"[VOLUME_CHECK] {skin['skin_id']} 失败: {e}")
+
+    if alert_count > 0:
+        print(f"[VOLUME_CHECK] 本轮发现 {alert_count} 个异动")
+
+
+def _save_alert(name_key, alert_type, message):
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.execute(
+            "INSERT INTO alerts (name_key, alert_type, message, created_at) VALUES (?,?,?,?)",
+            (name_key, alert_type, message, datetime.now().isoformat()),
+        )
+        conn.commit()
+
+
+def auto_discover_all_mainstream():
+    """全量搜索主流武器饰品，过滤无成交量的，加入监控池"""
+    # 覆盖所有主流武器类型
+    keywords = [
+        # 步枪
+        "AK-47", "M4A1", "M4A4", "AUG", "SG 553", "FAMAS", "Galil AR",
+        # 狙击
+        "AWP", "SSG 08", "SCAR-20", "G3SG1",
+        # 冲锋枪
+        "MAC-10", "MP9", "MP7", "P90", "UMP-45", "PP-Bizon",
+        # 手枪
+        "Desert Eagle", "USP-S", "Glock-18", "P250", "Five-SeveN", "CZ75-Auto", "Tec-9", "R8 Revolver",
+        # 重武器
+        "MAG-7", "Nova", "XM1014", "Sawed-Off", "M249", "Negev",
+        # 刀
+        "Karambit", "M9 Bayonet", "Butterfly Knife", "Skeleton Knife", "Bayonet",
+        "Flip Knife", "Gut Knife", "Huntsman Knife", "Falchion Knife", "Bowie Knife",
+        "Shadow Daggers", "Navaja Knife", "Stiletto Knife", "Talon Knife", "Ursus Knife",
+        "Classic Knife", "Paracord Knife", "Survival Knife", "Nomad Knife",
+        # 手套
+        "Driver Gloves", "Specialist Gloves", "Sport Gloves", "Moto Gloves",
+        "Hand Wraps", "Bloodhound Gloves", "Hydra Gloves",
+    ]
+
+    total_added = 0
+    for kw in keywords:
+        try:
+            r = requests.get(
+                f"{BASE_URL}/search/suggest", params={"text": kw, "limitNum": 10}, headers=HEADERS, timeout=10
+            )
+            if r.status_code != 200:
+                continue
+            items = r.json().get("data", [])
+            for item in items:
+                sid = int(item.get("id", 0))
+                name = item.get("value", "")
+                if not sid or not name:
+                    continue
+
+                with sqlite3.connect(str(DB_PATH)) as conn:
+                    exists = conn.execute("SELECT 1 FROM skin_monitor WHERE skin_id=?", (sid,)).fetchone()
+                    if not exists:
+                        # 先查一下是否有成交量
+                        try:
+                            gr = requests.get(
+                                f"{BASE_URL}/info/good", params={"id": sid}, headers=HEADERS, timeout=8
+                            )
+                            if gr.status_code == 200:
+                                gd = gr.json().get("data", {}).get("goods_info", {})
+                                turnover = gd.get("turnover_number") or 0
+                                price = gd.get("buff_sell_price") or 0
+                                if turnover > 0 and price > 0:
+                                    threshold = get_volume_threshold(price)
+                                    conn.execute(
+                                        "INSERT INTO skin_monitor (skin_id, skin_name, current_price, current_volume, alert_threshold, enabled, added_at) VALUES (?,?,?,?,?,1,?)",
+                                        (sid, name, price, turnover, threshold, datetime.now().isoformat()),
+                                    )
+                                    conn.commit()
+                                    total_added += 1
+                        except Exception:
+                            pass
+                time.sleep(0.15)
+        except Exception as e:
+            print(f"[DISCOVER] {kw} 失败: {e}")
+        time.sleep(0.3)
+
+    print(f"[DISCOVER] 全量发现完成，共 {total_added} 个有成交量的主流饰品")
+
+
+def skin_monitor_loop():
+    """后台成交量异动巡检 (每 5 分钟)"""
+    print("[SKIN_MONITOR] 开始全量发现主流饰品...")
+    auto_discover_all_mainstream()
+    while True:
+        try:
+            check_skin_volume()
+        except Exception as e:
+            print(f"[SKIN_MONITOR] 巡检异常: {e}")
+        time.sleep(300)
+
+
+@app.route("/api/ranks", methods=["POST"])
+def api_ranks():
+    """涨幅榜 / 跌幅榜"""
+    data = request.get_json() or {}
+    rank_type = data.get("type", "rise")  # rise / fall
+    page = data.get("page", 1)
+    try:
+        r = requests.post(
+            f"{BASE_URL}/info/get_rank_list",
+            json={"page": page, "pageSize": 20, "type": rank_type},
+            headers=HEADERS,
+            timeout=10,
         )
         if r.status_code == 200:
             return jsonify(r.json().get("data", {}))
@@ -496,9 +880,14 @@ def api_compare():
     return jsonify(result)
 
 
+@app.route("/echarts.min.js")
+def echarts_js():
+    return send_from_directory(".", "echarts.min.js")
+
+
 @app.route("/")
 def index():
-    return app.send_static_file("cs_monitor_frontend.html")
+    return send_from_directory(".", "cs_monitor_frontend.html")
 
 
 # ─── 启动 ────────────────────────────────
@@ -509,9 +898,13 @@ if __name__ == "__main__":
     print("首次采集数据...")
     collect_and_store()
 
-    print("启动后台采集线程 (每 60 秒)...")
+    print("启动后台采集线程 (每 20 秒)...")
     t = threading.Thread(target=collector_loop, daemon=True)
     t.start()
+
+    print("启动皮肤价格监控线程 (每 5 分钟)...")
+    t2 = threading.Thread(target=skin_monitor_loop, daemon=True)
+    t2.start()
 
     print("=" * 50)
     print("CS 饰品行情监控系统已启动")
