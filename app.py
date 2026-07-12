@@ -81,22 +81,29 @@ def get_email_config():
         r = conn.execute("SELECT * FROM email_config WHERE enabled=1 LIMIT 1").fetchone()
         return dict(r) if r else None
 
-def send_alert_email(message: str):
+PUSHPLUS_TOKEN = "oc_5102c59bcb482e5e71132d69deb82277"
+
+def send_alert_notification(message: str):
+    """通过 PushPlus 推送微信通知 (QQ邮箱作为备用)"""
+    # PushPlus 推送
+    try:
+        r = requests.post("http://www.pushplus.plus/send", json={
+            "token": PUSHPLUS_TOKEN,
+            "title": f"CS2行情-{message[:30]}",
+            "content": f"<h3>{message}</h3><p>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p><p>csqaq.com</p>"
+        }, timeout=10)
+        if r.status_code == 200: print(f"[PUSH] 已推送")
+    except Exception as e: print(f"[PUSH] 失败: {e}")
+
+    # QQ邮箱备用
     cfg = get_email_config()
     if not cfg or not cfg.get("receiver_email"): return
     try:
-        is_up = "涨" in message
-        color = "#27ae60" if is_up else "#e74c3c"
         msg = MIMEMultipart()
         msg["From"] = cfg["sender_email"]
         msg["To"] = cfg["receiver_email"]
         msg["Subject"] = f"[CS2] {message[:60]}"
-        body = f"""<h2>CS2 行情异动</h2>
-        <table style="border-collapse:collapse;max-width:480px;">
-        <tr style="background:{color};color:#fff;"><td style="padding:10px 14px;font-weight:bold;">{message}</td></tr>
-        <tr><td style="padding:10px;border:1px solid #ddd;font-size:13px;">
-        <p style="color:#888;">{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | csqaq.com</p></td></tr></table>"""
-        msg.attach(MIMEText(body, "html", "utf-8"))
+        msg.attach(MIMEText(f"<h2>CS2 行情异动</h2><p>{message}</p><p>{datetime.now()}</p>", "html", "utf-8"))
         if cfg["smtp_port"] == 587:
             server = smtplib.SMTP(cfg["smtp_server"], cfg["smtp_port"], timeout=15)
             server.starttls()
@@ -105,9 +112,7 @@ def send_alert_email(message: str):
         server.login(cfg["sender_email"], cfg["auth_code"])
         server.sendmail(cfg["sender_email"], cfg["receiver_email"], msg.as_string())
         server.quit()
-        print(f"[EMAIL] 已发送")
-    except Exception as e:
-        print(f"[EMAIL] 失败: {e}")
+    except Exception as e: print(f"[EMAIL] 失败: {e}")
 
 def _save_alert(nk, atype, msg):
     with sqlite3.connect(str(DB_PATH)) as conn:
@@ -169,7 +174,7 @@ def check_index_alert(cur, prev, nk, name):
         tag = "[自选]" if wl else ""
         msg = f"{tag}[{direction}] {name} {cur_idx:.2f} ({change_pct:+.2f}%)"
         _save_alert(nk, "big_move", msg)
-        send_alert_email(msg)
+        send_alert_notification(msg)
 
 def collector_loop():
     while True:
@@ -255,7 +260,7 @@ def check_skin_volume():
                 direction = "放量暴涨" if price > (skin["current_price"] or price) else "放量异动"
                 msg = f"[{direction}] {skin['skin_name']} 15min成交{spike}件(阈{threshold}) ¥{price:.2f}"
                 _save_alert(skin["skin_name"], "volume_spike", msg)
-                send_alert_email(msg)
+                send_alert_notification(msg)
                 print(f"[VOLUME] {msg}")
             time.sleep(1.1)
         except Exception as e: print(f"[VOLUME] err {skin['skin_id']}: {e}")
