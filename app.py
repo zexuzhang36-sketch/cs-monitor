@@ -890,25 +890,25 @@ def index():
     return send_from_directory(".", "cs_monitor_frontend.html")
 
 
-# ─── 启动 ────────────────────────────────
-if __name__ == "__main__":
-    print("初始化数据库...")
-    init_db()
-
-    print("首次采集数据...")
+# ─── 启动 (模块加载时执行, gunicorn/直接运行都生效) ──
+print("初始化数据库...")
+init_db()
+print("首次采集数据...")
+try:
     collect_and_store()
+    print("[OK] 首次采集完成")
+except Exception as e:
+    print(f"[WARN] 首次采集失败: {e}")
+print("启动后台采集线程 (每 20 秒)...")
+t = threading.Thread(target=collector_loop, daemon=True)
+t.start()
+print("启动皮肤监控线程 (每 5 分钟)...")
+t2 = threading.Thread(target=skin_monitor_loop, daemon=True)
+t2.start()
 
-    print("启动后台采集线程 (每 20 秒)...")
-    t = threading.Thread(target=collector_loop, daemon=True)
-    t.start()
-
-    print("启动皮肤价格监控线程 (每 5 分钟)...")
-    t2 = threading.Thread(target=skin_monitor_loop, daemon=True)
-    t2.start()
-
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
     print("=" * 50)
-    print("CS 饰品行情监控系统已启动")
-    print("前端地址: http://127.0.0.1:5000")
+    print(f"CS 饰品行情监控系统已启动 - 端口 {port}")
     print("=" * 50)
-
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=port, debug=False)
