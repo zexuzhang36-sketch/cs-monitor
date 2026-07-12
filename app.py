@@ -243,18 +243,19 @@ def check_skin_volume():
             price = gd.get("buff_sell_price") or 0
             volume = gd.get("turnover_number") or 0
             if not price or not volume: continue
+
+            prev_vol = skin["current_volume"] or 0
+            # 成交量增量 = 当前总成交量 - 上次总成交量
+            spike = volume - prev_vol if prev_vol > 0 else 0
+            threshold = get_volume_threshold(price)
+
             with sqlite3.connect(str(DB_PATH)) as conn2:
                 conn2.execute("INSERT INTO volume_snapshots (skin_id,volume,price,captured_at) VALUES (?,?,?,?)",
                               (skin["skin_id"], volume, price, now))
-                since = (datetime.now() - timedelta(minutes=15)).isoformat()
-                prev = conn2.execute("SELECT volume FROM volume_snapshots WHERE skin_id=? AND captured_at<=? ORDER BY captured_at ASC LIMIT 1",
-                                     (skin["skin_id"], since)).fetchone()
-                prev_vol = prev[0] if prev else 0
-                spike = volume - prev_vol if prev_vol > 0 else 0
-                threshold = get_volume_threshold(price)
                 conn2.execute("UPDATE skin_monitor SET current_price=?,current_volume=?,prev_volume=?,vol_spike=?,alert_threshold=?,last_checked=? WHERE skin_id=?",
                               (price, volume, prev_vol, spike, threshold, now, skin["skin_id"]))
                 conn2.commit()
+
             if spike >= threshold:
                 alerts += 1
                 direction = "放量暴涨" if price > (skin["current_price"] or price) else "放量异动"
