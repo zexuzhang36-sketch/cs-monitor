@@ -164,7 +164,16 @@
         <div class="chart-box" id="mainChart"></div>
       </div>
       <div class="panel">
-        <div class="section-title">异动提醒</div>
+        <div class="section-title">异动提醒 · <span style="font-size:0.75rem;color:var(--accent);cursor:pointer;" onclick="toggleEmailConfig()">邮箱设置</span></div>
+        <div id="emailConfig" style="display:none;margin-bottom:10px;padding:10px;background:var(--bg);border-radius:8px;">
+          <div style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:6px;">配置QQ邮箱通知 &nbsp;|&nbsp; <a href="https://service.mail.qq.com/detail/0/75" target="_blank" style="color:var(--accent);">如何获取授权码?</a></div>
+          <input id="emailSender" placeholder="你的QQ邮箱" style="width:100%;padding:6px 10px;margin-bottom:6px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);color:var(--text);font-size:0.82rem;">
+          <input id="emailAuth" type="password" placeholder="邮箱授权码 (不是QQ密码)" style="width:100%;padding:6px 10px;margin-bottom:6px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);color:var(--text);font-size:0.82rem;">
+          <input id="emailReceiver" placeholder="接收通知的邮箱 (可同发件箱)" style="width:100%;padding:6px 10px;margin-bottom:8px;border:1px solid var(--border);border-radius:6px;background:var(--card-bg);color:var(--text);font-size:0.82rem;">
+          <button class="btn btn-sm" onclick="saveEmail()" style="margin-right:6px;">保存</button>
+          <button class="btn btn-sm btn-outline" onclick="testEmail()">发送测试</button>
+          <span id="emailMsg" style="font-size:0.78rem;margin-left:8px;"></span>
+        </div>
         <div id="alertsList"><div class="no-alerts">暂无提醒</div></div>
       </div>
     </div>
@@ -266,6 +275,43 @@ function requestNotification() {
     notificationGranted = (p === 'granted');
     alert(notificationGranted ? '桌面通知已开启!' : '通知权限被拒绝');
   });
+}
+
+// ==================== 邮箱配置 ====================
+async function toggleEmailConfig() {
+  const div = document.getElementById('emailConfig');
+  div.style.display = div.style.display === 'none' ? 'block' : 'none';
+  if (div.style.display === 'block') await loadEmailConfig();
+}
+async function loadEmailConfig() {
+  try {
+    const r = await fetch('/api/email/config');
+    const cfg = await r.json();
+    document.getElementById('emailSender').value = cfg.sender_email || '';
+    document.getElementById('emailReceiver').value = cfg.receiver_email || '';
+  } catch(e) {}
+}
+async function saveEmail() {
+  const s = document.getElementById('emailSender').value.trim();
+  const a = document.getElementById('emailAuth').value.trim();
+  const r = document.getElementById('emailReceiver').value.trim() || s;
+  if(!s||!a){document.getElementById('emailMsg').textContent='请填写完整';return}
+  const res = await fetch('/api/email/config',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({sender_email:s,auth_code:a,receiver_email:r})});
+  const d=await res.json();
+  document.getElementById('emailMsg').textContent=d.msg||'已保存';
+}
+async function testEmail() {
+  document.getElementById('emailMsg').textContent='发送中...';
+  const s=document.getElementById('emailSender').value.trim();
+  const a=document.getElementById('emailAuth').value.trim();
+  const r=document.getElementById('emailReceiver').value.trim()||s;
+  const res=await fetch('/api/email/test',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({sender_email:s,auth_code:a,receiver_email:r})});
+  const d=await res.json();
+  document.getElementById('emailMsg').textContent=d.msg||(d.ok?'发送成功':'失败');
 }
 
 function sendNotification(title, body) {

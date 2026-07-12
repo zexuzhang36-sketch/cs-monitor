@@ -5,18 +5,20 @@ CS 饰品行情监控后端
 """
 
 import json
-import os
 import sqlite3
+import smtplib
 import time
 import threading
 from datetime import datetime, timedelta
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from pathlib import Path
 
 import requests
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-app = Flask(__name__, static_folder="static", static_url_path="")
+app = Flask(__name__, static_folder=".")
 CORS(app)
 
 BASE_URL = "https://api.csqaq.com/api/v1"
@@ -78,6 +80,17 @@ def init_db():
                 added_at TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS email_config (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                smtp_server TEXT NOT NULL DEFAULT 'smtp.qq.com',
+                smtp_port INTEGER NOT NULL DEFAULT 465,
+                sender_email TEXT NOT NULL DEFAULT '',
+                auth_code TEXT NOT NULL DEFAULT '',
+                receiver_email TEXT NOT NULL DEFAULT '',
+                enabled INTEGER DEFAULT 0
+            )
+        """)
         conn.commit()
 
 
@@ -123,6 +136,46 @@ def check_alerts(current: dict, previous: dict, name_key: str, name: str):
             )
             conn.commit()
         print(f"[ALERT] {msg}")
+        # 发送邮件通知
+        send_alert_email(msg)
+
+
+# ─── 邮件通知 ────────────────────────────
+def get_email_config() -> dict | None:
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM email_config WHERE enabled=1 LIMIT 1").fetchone()
+        return dict(row) if row else None
+
+
+def send_alert_email(message: str):
+    """给已配置的邮箱发送异动提醒"""
+    cfg = get_email_config()
+    if not cfg or not cfg.get("receiver_email"):
+        return
+
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = cfg["sender_email"]
+        msg["To"] = cfg["receiver_email"]
+        msg["Subject"] = f"[CS2行情异动] {message[:50]}"
+
+        body = f"""
+        <h3>CS2 饰品行情异动提醒</h3>
+        <p style='font-size:16px'><b>{message}</b></p>
+        <p style='color:#888'>时间: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+        <p style='color:#888'>数据来源: csqaq.com</p>
+        """
+        msg.attach(MIMEText(body, "html", "utf-8"))
+
+        with smtplib.SMTP_SSL(cfg["smtp_server"], cfg["smtp_port"]) as server:
+            server.login(cfg["sender_email"], cfg["auth_code"])
+            server.sendmail(cfg["sender_email"], cfg["receiver_email"], msg.as_string())
+
+        print(f"[EMAIL] 邮件已发送至 {cfg['receiver_email']}")
+    except Exception as e:
+        print(f"[EMAIL] 发送失败: {e}")
+
 
 
 def collect_and_store():
@@ -340,6 +393,73 @@ def api_watchlist_add():
             return jsonify({"ok": False, "msg": f"{name} 已在监控列表中"})
 
 
+@app.route("/api/email/config")
+def api_get_email_config():
+    """获取当前邮件配置(隐藏授权码)"""
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM email_config LIMIT 1").fetchone()
+        if row:
+            cfg = dict(row)
+            cfg["auth_code"] = "***" if cfg.get("auth_code") else ""
+            return jsonify(cfg)
+        return jsonify({"enabled": 0, "sender_email": "", "receiver_email": ""})
+
+
+@app.route("/api/email/config", methods=["POST"])
+def api_set_email_config():
+    """配置邮件通知"""
+    data = request.get_json()
+    with sqlite3.connect(str(DB_PATH)) as conn:
+        conn.execute("DELETE FROM email_config")
+        conn.execute(
+            "INSERT INTO email_config (smtp_server, smtp_port, sender_email, auth_code, receiver_email, enabled) VALUES (?, ?, ?, ?, ?, 1)",
+            (
+                data.get("smtp_server", "smtp.qq.com"),
+                data.get("smtp_port", 465),
+                data.get("sender_email", ""),
+                data.get("auth_code", ""),
+                data.get("receiver_email", ""),
+            ),
+        )
+        conn.commit()
+    return jsonify({"ok": True, "msg": "邮件配置已保存"})
+
+
+@app.route("/api/email/test", methods=["POST"])
+def api_test_email():
+    """发送测试邮件"""
+    cfg = get_email_config()
+    if not cfg or not cfg.get("receiver_email"):
+        data = request.get_json()
+        if data:
+            sender = data.get("sender_email", "")
+            auth = data.get("auth_code", "")
+            receiver = data.get("receiver_email", "")
+            if not sender or not auth or not receiver:
+                return jsonify({"ok": False, "msg": "请先填写完整信息再测试"}), 400
+            cfg = {"smtp_server": "smtp.qq.com", "smtp_port": 465,
+                   "sender_email": sender, "auth_code": auth, "receiver_email": receiver}
+        else:
+            return jsonify({"ok": False, "msg": "请先配置邮箱"}), 400
+
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = cfg["sender_email"]
+        msg["To"] = cfg["receiver_email"]
+        msg["Subject"] = "[CS2行情监控] 测试邮件"
+        body = f"<h3>CS2 饰品行情监控</h3><p>邮件通知配置成功！</p><p style='color:#888'>{datetime.now()}</p>"
+        msg.attach(MIMEText(body, "html", "utf-8"))
+
+        with smtplib.SMTP_SSL(cfg["smtp_server"], cfg["smtp_port"]) as server:
+            server.login(cfg["sender_email"], cfg["auth_code"])
+            server.sendmail(cfg["sender_email"], cfg["receiver_email"], msg.as_string())
+
+        return jsonify({"ok": True, "msg": "测试邮件已发送，请检查收件箱"})
+    except Exception as e:
+        return jsonify({"ok": False, "msg": f"发送失败: {str(e)}"}), 500
+
+
 @app.route("/api/watchlist/remove", methods=["POST"])
 def api_watchlist_remove():
     data = request.get_json()
@@ -378,38 +498,24 @@ def api_compare():
 
 @app.route("/")
 def index():
-    return send_from_directory("static", "index.html")
+    return app.send_static_file("cs_monitor_frontend.html")
 
 
 # ─── 启动 ────────────────────────────────
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    print(f"启动服务 - 端口 {port}")
-    app.run(host="0.0.0.0", port=port, debug=False)
+    print("初始化数据库...")
+    init_db()
 
+    print("首次采集数据...")
+    collect_and_store()
 
-# ─── 启动初始化 (模块加载时执行) ────────
-def _startup():
-    """初始化数据库 + 启动采集线程（失败不影响 app 启动）"""
-    try:
-        init_db()
-        print("[OK] 数据库初始化完成")
-    except Exception as e:
-        print(f"[WARN] 数据库初始化失败: {e}")
-
-    t = threading.Thread(target=_first_collect_and_loop, daemon=True)
+    print("启动后台采集线程 (每 60 秒)...")
+    t = threading.Thread(target=collector_loop, daemon=True)
     t.start()
-    print("[OK] 后台采集线程已启动")
 
+    print("=" * 50)
+    print("CS 饰品行情监控系统已启动")
+    print("前端地址: http://127.0.0.1:5000")
+    print("=" * 50)
 
-def _first_collect_and_loop():
-    """先做首次采集，然后进入定时循环"""
-    try:
-        collect_and_store()
-        print("[OK] 首次数据采集完成")
-    except Exception as e:
-        print(f"[WARN] 首次采集失败 (不影响服务): {e}")
-    collector_loop()
-
-
-_startup()
+    app.run(host="0.0.0.0", port=5000, debug=False)
