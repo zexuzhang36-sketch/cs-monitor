@@ -251,6 +251,12 @@ def check_skin_volume():
                 "SELECT volume FROM volume_snapshots WHERE skin_id=? AND captured_at<=? ORDER BY captured_at DESC LIMIT 1",
                 (skin["skin_id"], hour_ago)
             ).fetchone()
+            if not prev_row:
+                # 降级: 用最早的快照作为基准
+                prev_row = conn3.execute(
+                    "SELECT volume FROM volume_snapshots WHERE skin_id=? ORDER BY captured_at ASC LIMIT 1",
+                    (skin["skin_id"],)
+                ).fetchone()
             conn3.close()
             prev_vol = prev_row[0] if prev_row else 0
             spike = volume - prev_vol if prev_vol > 0 else 0
