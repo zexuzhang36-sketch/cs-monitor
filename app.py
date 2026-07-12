@@ -390,12 +390,26 @@ if __name__ == "__main__":
 
 # ─── 启动初始化 (模块加载时执行) ────────
 def _startup():
-    print("初始化数据库...")
-    init_db()
-    print("首次采集数据...")
-    collect_and_store()
-    print("启动后台采集线程 (每 60 秒)...")
-    t = threading.Thread(target=collector_loop, daemon=True)
+    """初始化数据库 + 启动采集线程（失败不影响 app 启动）"""
+    try:
+        init_db()
+        print("[OK] 数据库初始化完成")
+    except Exception as e:
+        print(f"[WARN] 数据库初始化失败: {e}")
+
+    t = threading.Thread(target=_first_collect_and_loop, daemon=True)
     t.start()
+    print("[OK] 后台采集线程已启动")
+
+
+def _first_collect_and_loop():
+    """先做首次采集，然后进入定时循环"""
+    try:
+        collect_and_store()
+        print("[OK] 首次数据采集完成")
+    except Exception as e:
+        print(f"[WARN] 首次采集失败 (不影响服务): {e}")
+    collector_loop()
+
 
 _startup()
