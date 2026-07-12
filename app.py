@@ -256,6 +256,18 @@ def check_skin_volume():
                               (price, volume, prev_vol, spike, threshold, now, skin["skin_id"]))
                 conn2.commit()
 
+            # 价格异动检测 (±5%)
+            price_change = 0
+            prev_price = skin["current_price"] or 0
+            if prev_price > 0:
+                price_change = (price - prev_price) / prev_price * 100
+            if abs(price_change) >= 5 and prev_price > 0:
+                direction = "大涨" if price_change > 0 else "大跌"
+                msg = f"[价格{direction}] {skin['skin_name']} {price_change:+.2f}% | ¥{prev_price:.2f}→¥{price:.2f}"
+                _save_alert(skin["skin_name"], "price_move", msg)
+                send_alert_notification(msg)
+                print(f"[PRICE] {msg}")
+
             if spike >= threshold:
                 alerts += 1
                 direction = "放量暴涨" if price > (skin["current_price"] or price) else "放量异动"
