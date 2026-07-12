@@ -2,581 +2,488 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CS2 饰品行情监控</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<title>CS2 饰品行情监控 v2</title>
 <script src="/echarts.min.js"></script>
 <style>
-  :root {
-    --bg: #1a1d23; --card-bg: #21252b; --border: #2c313a;
-    --text: #e0e0e0; --text-secondary: #8b949e;
-    --green: #27ae60; --red: #e74c3c; --accent: #4a9eff;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    background: var(--bg); color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-    min-height: 100vh;
-  }
-  .header {
-    background: var(--card-bg); border-bottom: 1px solid var(--border);
-    padding: 12px 20px; display: flex; align-items: center; justify-content: space-between;
-    position: sticky; top: 0; z-index: 100;
-  }
-  .header h1 { font-size: 1.1rem; display: flex; align-items: center; gap: 8px; }
-  .header h1 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
-  .header-right { font-size: 0.8rem; color: var(--text-secondary); display: flex; align-items: center; gap: 10px; }
-  .alert-badge { background: #333; color: #fff; border-radius: 12px; padding: 3px 10px; font-size: 0.75rem; cursor: pointer; border: none; }
-  .alert-badge.has-alert { background: var(--red); animation: shake 0.5s; }
-  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-4px)} 75%{transform:translateX(4px)} }
+:root {
+  --bg: #0d0f12; --card: #161a1f; --border: #1e2329;
+  --text: #d1d4d8; --dim: #6b7280; --accent: #3b82f6;
+  --green: #22c55e; --red: #ef4444; --orange: #f59e0b; --purple: #8b5cf6;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--text);font-family:'PingFang SC','Microsoft YaHei',-apple-system,sans-serif;min-height:100vh}
+a{color:var(--accent)}
 
-  .container { max-width: 1400px; margin: 0 auto; padding: 16px 20px; }
+/* Header */
+.topbar{
+  background:var(--card);border-bottom:1px solid var(--border);
+  padding:10px 20px;display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:100;gap:12px;flex-wrap:wrap;
+}
+.topbar h1{font-size:1rem;white-space:nowrap;display:flex;align-items:center;gap:6px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--green);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.3}}
+.topbar-right{display:flex;align-items:center;gap:10px;font-size:.78rem;color:var(--dim);flex-wrap:wrap}
+.badge{background:#333;color:#fff;border-radius:10px;padding:2px 9px;font-size:.72rem;border:none;cursor:pointer}
+.badge.alert{background:var(--red);animation:shake .5s}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-3px)}75%{transform:translateX(3px)}}
 
-  /* cards */
-  .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; margin-bottom: 18px; }
-  .index-card {
-    background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
-    padding: 12px 14px; cursor: pointer; transition: all 0.2s;
-  }
-  .index-card:hover { border-color: var(--accent); }
-  .index-card.selected { border-color: var(--accent); box-shadow: 0 0 12px rgba(74,158,255,0.15); }
-  .index-card .card-name { font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 4px; display: flex; justify-content: space-between; }
-  .index-card .card-price { font-size: 1.2rem; font-weight: 700; }
-  .card-change.up { color: var(--green); }
-  .card-change.down { color: var(--red); }
-  .card-change.neutral { color: var(--text-secondary); }
-  .card-change { font-size: 0.8rem; font-weight: 600; margin-top: 2px; }
-  .watch-star { color: #f39c12; cursor: pointer; font-size: 0.8rem; opacity: 0.3; }
-  .watch-star.active { opacity: 1; }
+/* Container */
+.wrap{max-width:1500px;margin:0 auto;padding:12px 16px}
 
-  .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-bottom: 18px; }
-  @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
-  .panel { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
-  .chart-box { width: 100%; height: 340px; }
-  .section-title { font-size: 0.9rem; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
-  .section-title::before { content: ''; width: 3px; height: 14px; background: var(--accent); border-radius: 2px; }
+/* Tabs */
+.tabs{display:flex;gap:2px;margin-bottom:12px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab{
+  padding:7px 16px;border:1px solid var(--border);background:transparent;color:var(--dim);
+  cursor:pointer;font-size:.8rem;border-radius:6px 6px 0 0;white-space:nowrap;transition:.15s
+}
+.tab:hover{color:var(--text)}
+.tab.on{background:var(--card);color:var(--text);border-bottom-color:var(--card)}
 
-  .alert-item { padding: 8px 10px; border-radius: 6px; margin-bottom: 5px; font-size: 0.78rem; border-left: 3px solid var(--red); background: rgba(231,76,60,0.08); }
-  .alert-item .alert-time { color: var(--text-secondary); font-size: 0.7rem; margin-top: 3px; }
-  .no-data { color: var(--text-secondary); font-size: 0.85rem; text-align: center; padding: 30px; }
+/* Cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(175px,1fr));gap:7px;margin-bottom:14px}
+.card{
+  background:var(--card);border:1px solid var(--border);border-radius:8px;
+  padding:11px 13px;cursor:pointer;transition:.15s
+}
+.card:hover{border-color:var(--accent)}
+.card.sel{border-color:var(--accent);box-shadow:0 0 10px rgba(59,130,246,.12)}
+.card .cname{font-size:.73rem;color:var(--dim);margin-bottom:3px;display:flex;justify-content:space-between}
+.card .cprice{font-size:1.1rem;font-weight:700}
+.up{color:var(--green)}.down{color:var(--red)}.flat{color:var(--dim)}
 
-  .search-bar { display: flex; gap: 8px; margin-bottom: 12px; }
-  .search-bar input { flex: 1; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--card-bg); color: var(--text); font-size: 0.85rem; outline: none; }
-  .search-bar input:focus { border-color: var(--accent); }
-  .btn { padding: 8px 16px; border-radius: 8px; border: none; background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-size: 0.82rem; }
-  .btn:hover { opacity: 0.85; }
-  .btn-sm { padding: 5px 10px; font-size: 0.75rem; }
-  .btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
-  .footer { text-align: center; color: var(--text-secondary); font-size: 0.72rem; padding: 12px; border-top: 1px solid var(--border); margin-top: 30px; }
-  #emailConfig input { width: 100%; padding: 6px 10px; margin-bottom: 5px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font-size: 0.8rem; }
-  .tabs { display: flex; gap: 2px; margin-bottom: 14px; }
-  .tab-btn { padding: 7px 16px; border: 1px solid var(--border); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: 0.82rem; border-radius: 6px 6px 0 0; }
-  .tab-btn.active { background: var(--card-bg); color: var(--text); border-bottom-color: var(--card-bg); }
-  .wl-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
-  .wl-table th,.wl-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid var(--border); }
-  .wl-table th { color: var(--text-secondary); font-weight: 500; }
+/* Panels */
+.panel{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px}
+.ptitle{font-size:.85rem;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.ptitle::before{content:'';width:3px;height:14px;background:var(--accent);border-radius:2px}
+.row2{display:grid;grid-template-columns:2fr 1fr;gap:10px}
+@media(max-width:900px){.row2{grid-template-columns:1fr}}
+.chart{width:100%;height:350px}
+
+/* Tables */
+.tbl{width:100%;border-collapse:collapse;font-size:.78rem}
+.tbl th{color:var(--dim);font-weight:500;padding:7px 10px;text-align:left;border-bottom:1px solid var(--border);font-size:.72rem}
+.tbl td{padding:7px 10px;border-bottom:1px solid var(--border);white-space:nowrap}
+.tbl tr:hover{background:rgba(59,130,246,.04)}
+
+/* Search */
+.sbar{display:flex;gap:8px;margin-bottom:10px}
+.sbar input{flex:1;padding:9px 14px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:.85rem;outline:none}
+.sbar input:focus{border-color:var(--accent)}
+.btn{padding:8px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-weight:600;cursor:pointer;font-size:.8rem;white-space:nowrap}
+.btn:hover{opacity:.85}
+.btn-s{padding:4px 10px;font-size:.72rem}
+.btn-o{background:transparent;border:1px solid var(--accent);color:var(--accent)}
+.btn-r{background:var(--red);border-color:var(--red)}
+
+/* Alerts */
+.aitem{padding:8px 10px;border-radius:6px;margin-bottom:4px;font-size:.75rem;border-left:3px solid var(--red);background:rgba(239,68,68,.06)}
+.aitem .atime{color:var(--dim);font-size:.68rem;margin-top:2px}
+.nodata{color:var(--dim);font-size:.82rem;text-align:center;padding:24px}
+
+/* Modal */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:999;align-items:center;justify-content:center}
+.modal.show{display:flex}
+.modal-inner{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto}
+.modal-inner input,.modal-inner select{width:100%;padding:7px 10px;margin-bottom:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:.82rem}
+
+/* Email */
+.email-cfg input{width:100%;padding:6px 10px;margin-bottom:5px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font-size:.78rem}
+
+/* Period buttons */
+.pbtn{padding:4px 11px;font-size:.7rem;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--dim);cursor:pointer}
+.pbtn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* Detail skin cards */
+.plats{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin-bottom:12px}
+.plat{background:var(--bg);border-radius:8px;padding:9px 12px;min-width:125px;flex-shrink:0}
+.plat .pname{font-size:.68rem;color:var(--accent);font-weight:600;margin-bottom:4px}
+.plat .pval{font-size:.78rem}
+
+/* Footer */
+.ft{text-align:center;color:var(--dim);font-size:.7rem;padding:12px;border-top:1px solid var(--border);margin-top:30px}
+
+/* Mobile */
+@media(max-width:768px){
+  .wrap{padding:8px}
+  .cards{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:5px}
+  .card{padding:8px 10px}
+  .card .cprice{font-size:.95rem}
+  .topbar{padding:8px 12px}
+  .topbar h1{font-size:.88rem}
+  .sbar input{font-size:16px}
+  .tbl{font-size:.7rem}
+  .chart{height:280px}
+  .plats{gap:6px}.plat{min-width:110px;padding:7px 10px}
+}
 </style>
 </head>
 <body>
 
-<div class="header">
-  <h1><span class="dot"></span>CS2 饰品行情监控</h1>
-  <div class="header-right">
-    <button class="btn btn-sm btn-outline" onclick="Notification.requestPermission()">桌面通知</button>
-    <span id="updateTime">加载中...</span>
-    <button class="alert-badge" id="alertBadge" onclick="showAlerts()">0 条提醒</button>
+<div class="topbar">
+  <h1><span class="dot"></span>CS2 市场监控 v2</h1>
+  <div class="topbar-right">
+    <button class="btn btn-s btn-o" onclick="Notification.requestPermission()">桌面通知</button>
+    <span id="clock">--</span>
+    <button class="badge" id="badge" onclick="showAlerts()">0</button>
   </div>
 </div>
 
-<div class="container">
+<div class="wrap">
   <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('dashboard',this)">大盘指数</button>
-    <button class="tab-btn" onclick="switchTab('watchlist',this)">自选监控</button>
-    <button class="tab-btn" onclick="switchTab('skinmon',this)">皮肤监控</button>
-    <button class="tab-btn" onclick="switchTab('search',this)">饰品搜索</button>
+    <button class="tab on" onclick="tab('idx',this)">大盘指数</button>
+    <button class="tab" onclick="tab('rank',this)">涨跌榜</button>
+    <button class="tab" onclick="tab('hot',this)">热门系列</button>
+    <button class="tab" onclick="tab('skins',this)">皮肤监控</button>
+    <button class="tab" onclick="tab('srch',this)">饰品搜索</button>
+    <button class="tab" onclick="tab('wl',this)">自选管理</button>
   </div>
 
-  <div id="tab-dashboard">
-    <noscript><div style="color:red;padding:20px;">请启用 JavaScript</div></noscript>
-<div class="cards-grid" id="indexCards"><div class="no-data">加载中... 如长时间无数据显示，请 <b>Ctrl+Shift+R</b> 强制刷新</div></div>
-    <div class="charts-row">
+  <!-- TAB: 大盘指数 -->
+  <div id="tab-idx">
+    <div class="cards" id="cards"></div>
+    <div class="row2">
       <div class="panel">
-        <div class="section-title" id="chartTitle">24小时走势 — 点击指数卡片查看</div>
-        <div class="chart-box" id="mainChart"></div>
-      </div>
-      <div class="panel">
-        <div class="section-title">异动提醒 · <a href="#" onclick="toggleEmailConfig();return false" style="color:var(--accent);font-size:0.75rem;">邮箱设置</a></div>
-        <div id="emailConfig" style="display:none;margin-bottom:8px;padding:8px;background:var(--bg);border-radius:6px;">
-          <div style="font-size:0.72rem;color:var(--text-secondary);margin-bottom:4px;">QQ邮箱通知 | <a href="https://service.mail.qq.com/detail/0/75" target="_blank" style="color:var(--accent);">获取授权码</a></div>
-          <input id="emailSender" placeholder="你的QQ邮箱">
-          <input id="emailAuth" type="password" placeholder="邮箱授权码(不是QQ密码)">
-          <input id="emailReceiver" placeholder="接收邮箱(默认同上)">
-          <div style="display:flex;gap:6px;">
-            <button class="btn btn-sm" onclick="saveEmail()">保存</button>
-            <button class="btn btn-sm btn-outline" onclick="testEmail()">测试</button>
-            <span id="emailMsg" style="font-size:0.75rem;"></span>
-          </div>
+        <div class="ptitle" id="ctitle">饰品指数
+          <button class="pbtn on" onclick="idxChart('init','1h',this)">分时</button>
+          <button class="pbtn" onclick="idxChart('init','24h',this)">日线</button>
+          <button class="pbtn" onclick="idxChart('init','7d',this)">周线</button>
         </div>
-        <div id="alertsList"><div class="no-data">暂无提醒</div></div>
+        <div class="chart" id="idxchart"></div>
+      </div>
+      <div class="panel">
+        <div class="ptitle">异动提醒 · <a href="#" onclick="toggleEmail();return false" style="font-size:.72rem;">邮箱设置</a></div>
+        <div class="email-cfg" id="emailCfg" style="display:none;margin-bottom:8px;padding:8px;background:var(--bg);border-radius:6px;">
+          <div style="font-size:.7rem;color:var(--dim);margin-bottom:4px;">QQ邮箱通知 | <a href="https://service.mail.qq.com/detail/0/75" target="_blank">获取授权码</a></div>
+          <input id="eSender" placeholder="QQ邮箱"><input id="eAuth" type="password" placeholder="授权码"><input id="eRecv" placeholder="接收邮箱(默认同上)">
+          <div style="display:flex;gap:6px;"><button class="btn btn-s" onclick="saveEmail()">保存</button><button class="btn btn-s btn-o" onclick="testEmail()">测试</button><span id="eMsg" style="font-size:.7rem;"></span></div>
+        </div>
+        <div id="alerts"><div class="nodata">暂无</div></div>
       </div>
     </div>
   </div>
 
-  <div id="tab-watchlist" style="display:none;">
-    <div class="section-title">自选监控</div>
-    <div style="margin-bottom:10px;">
-      <button class="btn btn-sm" onclick="openAddWatch()">+ 添加监控</button>
-      <span style="font-size:0.78rem;color:var(--text-secondary);margin-left:8px;">在大盘指数卡片点 ⭐ 可快速添加</span>
+  <!-- TAB: 涨跌榜 -->
+  <div id="tab-rank" style="display:none">
+    <div class="ptitle">涨跌排行榜
+      <button class="pbtn on" onclick="loadRank('rise',this)">涨幅榜</button>
+      <button class="pbtn" onclick="loadRank('fall',this)">跌幅榜</button>
+      <button class="pbtn" onclick="loadRank('hot',this)">热门成交</button>
     </div>
-    <div class="panel">
-      <table class="wl-table"><thead><tr><th>名称</th><th>当前价格</th><th>日涨跌</th><th>预警阈值</th><th>操作</th></tr></thead>
-      <tbody id="wlBody"><tr><td colspan="5" class="no-data">暂无自选</td></tr></tbody></table>
+    <div class="panel" style="overflow-x:auto">
+      <table class="tbl"><thead><tr><th>#</th><th>名称</th><th>价格</th><th>涨跌</th><th>涨跌幅</th><th>成交量</th></tr></thead>
+      <tbody id="rankBody"><tr><td colspan="6" class="nodata">加载中...</td></tr></tbody></table>
     </div>
   </div>
 
-  <div id="tab-skinmon" style="display:none;">
-    <div class="section-title">成交量异动监控</div>
-    <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:10px;">
-      阈值: ¥100以下≥50件 | ¥100~1000≥20件 | ¥1000~10000≥10件 | ¥10000以上≥5件 | 每5分钟巡检
-    </div>
-    <div id="skinMonList"><div class="no-data">加载中...</div></div>
+  <!-- TAB: 热门系列 -->
+  <div id="tab-hot" style="display:none">
+    <div class="ptitle">热门收藏品系列</div>
+    <div class="cards" id="hotCards"><div class="nodata">加载中...</div></div>
   </div>
 
-  <div id="tab-search" style="display:none;">
-    <div class="section-title">饰品搜索</div>
-    <div class="search-bar">
-      <input id="searchInput" placeholder="输入饰品名称，如 AK-47 | 红线 / M4A1 | 喧嚣杀戮 ..." onkeydown="if(event.key==='Enter')doSearch()">
-      <button class="btn" onclick="doSearch()">搜索</button>
+  <!-- TAB: 皮肤监控 -->
+  <div id="tab-skins" style="display:none">
+    <div class="ptitle">成交量异动监控
+      <span style="font-size:.7rem;color:var(--dim);font-weight:400;">| ¥100↓≥50件 ¥100~1k≥20 ¥1k~10k≥10 ¥10k↑≥5</span>
     </div>
-    <div id="searchResults"></div>
-    <div id="skinDetail" style="display:none;"></div>
+    <div class="panel" style="overflow-x:auto">
+      <table class="tbl"><thead><tr><th>名称</th><th>价格</th><th>15min成交</th><th>阈值</th><th>总成交</th><th>操作</th></tr></thead>
+      <tbody id="skinBody"><tr><td colspan="6" class="nodata">加载中...</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- TAB: 饰品搜索 -->
+  <div id="tab-srch" style="display:none">
+    <div class="sbar">
+      <input id="sInput" placeholder="搜索饰品... 如 AK-47 红线, M4A1 喧嚣, AWP 二西莫夫" onkeydown="if(event.key==='Enter')search()">
+      <button class="btn" onclick="search()">搜索</button>
+    </div>
+    <div id="sResults"></div>
+    <div id="skinDetail" style="display:none"></div>
+  </div>
+
+  <!-- TAB: 自选管理 -->
+  <div id="tab-wl" style="display:none">
+    <div class="ptitle">自选指数监控</div>
+    <div class="panel" style="overflow-x:auto">
+      <table class="tbl"><thead><tr><th>名称</th><th>当前价格</th><th>涨跌</th><th>阈值</th><th>操作</th></tr></thead>
+      <tbody id="wlBody"><tr><td colspan="5" class="nodata">暂无</td></tr></tbody></table>
+    </div>
   </div>
 </div>
 
-<div class="footer">数据来源: csqaq.com | 刷新间隔: 60秒 | 异动超 ±3% 自动邮件通知</div>
+<div class="ft">csqaq.com | 20s采集 | 5min巡检 | QQ邮件通知</div>
 
 <script>
-// ==================== STATE ====================
-var indices = [], selected = 'init', alerts = [], watchlist = [];
-var mainChart = null, emailVisible = false;
+// ========== GLOBAL STATE ==========
+var indices=[], sel='init', idxChartInst=null, skinChartInst=null, curPeriod='24h', alerts=[];
 
-// ==================== INIT ====================
-async function loadAll() {
-  try {
-    var d = await fetch('/api/dashboard').then(r=>r.json());
-    indices = d.indices || [];
-    document.getElementById('updateTime').textContent = '更新: ' + fmtTime(d.last_update);
-    var cnt = d.alert_count || 0;
-    var badge = document.getElementById('alertBadge');
-    badge.textContent = cnt + ' 条提醒';
-    badge.className = 'alert-badge' + (cnt > 0 ? ' has-alert' : '');
+// ========== TAB SWITCH ==========
+function tab(name,btn){
+  document.querySelectorAll('.tab').forEach(function(b){b.classList.remove('on')});
+  btn.classList.add('on');
+  var tabs=['idx','rank','hot','skins','srch','wl'];
+  tabs.forEach(function(t){document.getElementById('tab-'+t).style.display=(t===name)?'':'none'});
+  if(name==='rank') loadRank('rise');
+  if(name==='hot') loadHotSeries();
+  if(name==='skins') loadSkinMon();
+  if(name==='wl') loadWl();
+  if(name==='idx' && idxChartInst) idxChartInst.resize();
+}
+
+// ========== DASHBOARD ==========
+function loadDash(){
+  fetch('/api/dashboard').then(function(r){return r.json()}).then(function(d){
+    indices=d.indices||[];
+    document.getElementById('clock').textContent='更新:'+fmt(d.last_update);
+    var b=document.getElementById('badge');b.textContent=(d.alert_count||0)+'提醒';
+    b.className='badge'+(d.alert_count>0?' alert':'');
     renderCards();
-  } catch(e) { console.error(e); }
-}
-
-function renderCards() {
-  if (!indices.length) { document.getElementById('indexCards').innerHTML = '<div class="no-data">暂无数据，等待采集...</div>'; return; }
-  var html = '';
-  indices.forEach(function(idx) {
-    var cls = idx.chg_rate > 0.1 ? 'up' : (idx.chg_rate < -0.1 ? 'down' : 'neutral');
-    var arr = idx.chg_rate > 0.1 ? '▲' : (idx.chg_rate < -0.1 ? '▼' : '─');
-    var sel = idx.name_key === selected ? ' selected' : '';
-    html += '<div class="index-card' + sel + '" onclick="selectCard(\'' + idx.name_key + '\')">' +
-      '<div class="card-name">' + idx.name + ' <span class="watch-star" onclick="event.stopPropagation();toggleWatch(\'' + idx.name_key + '\',\'' + idx.name + '\')">⭐</span></div>' +
-      '<div class="card-price">' + (idx.market_index||0).toFixed(2) + '</div>' +
-      '<div class="card-change ' + cls + '">' + arr + ' ' + (idx.chg_num>0?'+':'') + (idx.chg_num||0).toFixed(2) + ' (' + (idx.chg_rate>0?'+':'') + (idx.chg_rate||0).toFixed(2) + '%)</div>' +
-      '</div>';
   });
-  document.getElementById('indexCards').innerHTML = html;
+  fetch('/api/alerts?limit=12').then(function(r){return r.json()}).then(function(a){
+    alerts=a||[];
+    var h='';
+    if(!a.length) h='<div class=\"nodata\">暂无提醒</div>';
+    else a.forEach(function(x){h+='<div class=\"aitem\"><div>'+x.message+'</div><div class=\"atime\">'+fmt(x.created_at)+'</div></div>'});
+    document.getElementById('alerts').innerHTML=h;
+  });
 }
 
-function selectCard(nk) { selected = nk; renderCards(); loadChart(nk, mainChartPeriod); }
+function renderCards(){
+  var h='';
+  indices.forEach(function(i){
+    var cls=i.chg_rate>0.1?'up':(i.chg_rate<-0.1?'down':'flat');
+    var arr=i.chg_rate>0.1?'▲':(i.chg_rate<-0.1?'▼':'─');
+    h+='<div class="card'+(i.name_key===sel?' sel':'')+'" onclick="selCard(\''+i.name_key+'\')">'+
+      '<div class="cname">'+i.name+' <span class="watch-star" onclick="event.stopPropagation();toggleW(\''+i.name_key+'\',\''+i.name+'\')" style="color:var(--orange);font-size:.75rem;cursor:pointer;">⭐</span></div>'+
+      '<div class="cprice">'+(i.market_index||0).toFixed(2)+'</div>'+
+      '<div style="font-size:.75rem;font-weight:600;" class="'+cls+'">'+arr+' '+(i.chg_num>0?'+':'')+(i.chg_num||0).toFixed(2)+' ('+(i.chg_rate>0?'+':'')+(i.chg_rate||0).toFixed(2)+'%)</div></div>';
+  });
+  document.getElementById('cards').innerHTML=h;
+}
 
-// ==================== CHART ====================
-var mainChartPeriod = '24h';
-function loadChart(nk, period) {
-  period = period || mainChartPeriod;
-  mainChartPeriod = period;
-  var box = document.getElementById('mainChart');
-  if (typeof echarts === 'undefined') { box.innerHTML = '<div class="no-data">图表组件加载中...</div>'; setTimeout(function(){loadChart(nk,period);},1000); return; }
-  if (!mainChart) { try { mainChart = echarts.init(box); window.addEventListener('resize',function(){mainChart.resize();}); } catch(e) {} }
-  if (!mainChart) return;
+function selCard(nk){sel=nk;renderCards();idxChart(nk,curPeriod)}
 
-  var name = nk;
-  indices.forEach(function(i){ if(i.name_key===nk) name = i.name; });
-  document.getElementById('chartTitle').innerHTML = name + ' · ' +
-    '<button class="period-btn'+(period==='1h'?' active':'')+'" onclick="loadChart(\''+nk+'\',\'1h\')" style="margin-left:8px;">分时</button>' +
-    '<button class="period-btn'+(period==='24h'?' active':'')+'" onclick="loadChart(\''+nk+'\',\'24h\')">日线</button>' +
-    '<button class="period-btn'+(period==='7d'?' active':'')+'" onclick="loadChart(\''+nk+'\',\'7d\')">周线</button>';
+function idxChart(nk,period,btn){
+  if(btn){document.querySelectorAll('#ctitle .pbtn').forEach(function(b){b.classList.remove('on')});btn.classList.add('on')}
+  curPeriod=period;
+  var name=nk;indices.forEach(function(i){if(i.name_key===nk)name=i.name;});
+  document.getElementById('ctitle').innerHTML=name+
+    ' <button class="pbtn'+(period==='1h'?' on':'')+'" onclick="idxChart(\''+nk+'\',\'1h\',this)">分时</button>'+
+    '<button class="pbtn'+(period==='24h'?' on':'')+'" onclick="idxChart(\''+nk+'\',\'24h\',this)">日线</button>'+
+    '<button class="pbtn'+(period==='7d'?' on':'')+'" onclick="idxChart(\''+nk+'\',\'7d\',this)">周线</button>';
 
-  if (mainChart && !mainChart.isDisposed()) mainChart.dispose();
+  if(typeof echarts==='undefined'){setTimeout(function(){idxChart(nk,period)},1000);return}
+  var dom=document.getElementById('idxchart');
+  if(idxChartInst&&!idxChartInst.isDisposed())idxChartInst.dispose();
+  idxChartInst=echarts.init(dom);
 
-  fetch('/api/history/' + nk + '?period=' + period).then(function(r){return r.json()}).then(function(d) {
-    var pts = d.points || [];
-    if (!pts.length) { box.innerHTML = '<div class="no-data">数据收集中...</div>'; return; }
-
-    mainChart = echarts.init(box);
-    var isOHLC = pts[0].open !== undefined;
-    var upColor = '#27ae60', downColor = '#e74c3c';
-    var series = [];
-
-    if (isOHLC) {
-      // OHLC K线
-      var ohlcData = [], dates = [];
-      pts.forEach(function(p){ ohlcData.push([p.open, p.close, p.low, p.high]); dates.push(p.t); });
-      // MA5, MA10
-      var ma5=[], ma10=[];
-      for (var i=0;i<ohlcData.length;i++) {
-        if (i<4) { ma5.push(null); ma10.push(null); continue; }
-        var s5=0,s10=0;
-        for (var j=0;j<5;j++) s5+=ohlcData[i-j][1];
-        ma5.push(+(s5/5).toFixed(2));
-        if (i<9) { ma10.push(null); continue; }
-        for (var k=0;k<10;k++) s10+=ohlcData[i-k][1];
-        ma10.push(+(s10/10).toFixed(2));
+  fetch('/api/history/'+nk+'?period='+period).then(function(r){return r.json()}).then(function(d){
+    var pts=d.points||[];if(!pts.length){dom.innerHTML='<div class=\"nodata\">数据累积中...</div>';return}
+    var isOHLC=pts[0].open!==undefined,dates=[],oData=[],vData=[];
+    if(isOHLC){
+      pts.forEach(function(p){oData.push([p.open,p.close,p.low,p.high]);dates.push(p.t);});
+      var ma5=[],ma10=[];
+      for(var i=0;i<oData.length;i++){
+        if(i<4){ma5.push(null);ma10.push(null);continue}
+        var s5=0;for(var j=0;j<5;j++)s5+=oData[i-j][1];ma5.push(+(s5/5).toFixed(2));
+        if(i<9){ma10.push(null);continue}
+        var s10=0;for(var k=0;k<10;k++)s10+=oData[i-k][1];ma10.push(+(s10/10).toFixed(2));
       }
-      series = [
-        {name:'',type:'candlestick',data:ohlcData,itemStyle:{color:upColor,color0:downColor,borderColor:upColor,borderColor0:downColor}},
-        {name:'MA5',type:'line',data:ma5,smooth:true,symbol:'none',lineStyle:{color:'#f39c12',width:1}},
-        {name:'MA10',type:'line',data:ma10,smooth:true,symbol:'none',lineStyle:{color:'#9b59b6',width:1}},
+      var series=[
+        {type:'candlestick',data:oData,itemStyle:{color:'#22c55e',color0:'#ef4444',borderColor:'#22c55e',borderColor0:'#ef4444'}},
+        {name:'MA5',type:'line',data:ma5,smooth:true,symbol:'none',lineStyle:{color:'#f59e0b',width:1}},
+        {name:'MA10',type:'line',data:ma10,smooth:true,symbol:'none',lineStyle:{color:'#8b5cf6',width:1}}
       ];
-      var xData = dates;
-    } else {
-      // 原始数据点线图
-      var vals=[], times=[];
-      pts.forEach(function(p){ vals.push(p.price); times.push(p.t); });
-      var up = vals.length>1 && vals[vals.length-1] >= vals[0];
-      var color = up ? upColor : downColor;
-      series = [{type:'line',data:vals,smooth:true,symbol:'none',lineStyle:{color:color,width:2},
-        areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:up?'rgba(39,174,96,0.2)':'rgba(231,76,60,0.2)'},{offset:1,color:'rgba(0,0,0,0)'}])}
-      }];
-      var xData = times;
+    }else{
+      pts.forEach(function(p){vData.push(p.price);dates.push(p.t);});
+      var up=vData.length>1&&vData[vData.length-1]>=vData[0],color=up?'#22c55e':'#ef4444';
+      var series=[{type:'line',data:vData,smooth:true,symbol:'none',lineStyle:{color:color,width:2},
+        areaStyle:{color:new echarts.graphic.LinearGradient(0,0,0,1,[{offset:0,color:up?'rgba(34,197,94,.18)':'rgba(239,68,68,.18)'},{offset:1,color:'rgba(0,0,0,0)'}])}}];
     }
-
-    mainChart.setOption({
-      animation: false,
-      tooltip: {trigger:'axis',backgroundColor:'#21252b',borderColor:'#2c313a',textStyle:{color:'#e0e0e0'},axisPointer:{type:'cross'}},
-      grid: {left:60,right:20,top:15,bottom:period==='1h'?30:70},
-      xAxis: {type:'category',data:xData,axisLine:{lineStyle:{color:'#2c313a'}},axisLabel:{color:'#8b949e',fontSize:10,interval:Math.max(1,Math.floor(xData.length/8))}},
-      yAxis: {type:'value',scale:true,axisLabel:{color:'#8b949e',fontSize:11},splitLine:{lineStyle:{color:'#2c313a',type:'dashed'}}},
-      dataZoom: period==='1h'?[]:[
-        {type:'slider',start:50,end:100,height:22,bottom:8,borderColor:'#2c313a',backgroundColor:'#21252b',fillerColor:'rgba(74,158,255,0.15)',handleStyle:{color:'#4a9eff'},textStyle:{color:'#8b949e'}},
-        {type:'inside',zoomOnMouseWheel:true,moveOnMouseMove:true}
-      ],
-      series: series,
+    idxChartInst.setOption({
+      animation:false,tooltip:{trigger:'axis',backgroundColor:'#161a1f',borderColor:'#1e2329',textStyle:{color:'#d1d4d8'},axisPointer:{type:'cross'}},
+      grid:{left:60,right:20,top:10,bottom:period==='1h'?30:70},
+      xAxis:{type:'category',data:dates,axisLine:{lineStyle:{color:'#1e2329'}},axisLabel:{color:'#6b7280',fontSize:10,interval:Math.max(1,Math.floor(dates.length/8))}},
+      yAxis:{type:'value',scale:true,axisLabel:{color:'#6b7280',fontSize:11},splitLine:{lineStyle:{color:'#1e2329',type:'dashed'}}},
+      dataZoom:period==='1h'?[]:[{type:'slider',start:50,end:100,height:22,bottom:8,borderColor:'#1e2329',backgroundColor:'#161a1f',fillerColor:'rgba(59,130,246,.12)',handleStyle:{color:'#3b82f6'},textStyle:{color:'#6b7280'}},{type:'inside',zoomOnMouseWheel:true,moveOnMouseMove:true}],
+      series:series
     });
-  }).catch(function(e){ console.error(e); });
-}
-
-// ==================== ALERTS ====================
-function loadAlerts() {
-  fetch('/api/alerts?limit=15').then(function(r){return r.json()}).then(function(a) {
-    alerts = a || [];
-    var html = '';
-    if (!alerts.length) html = '<div class="no-data">暂无提醒</div>';
-    else alerts.forEach(function(x){ html += '<div class="alert-item"><div>' + x.message + '</div><div class="alert-time">' + fmtTime(x.created_at) + '</div></div>'; });
-    document.getElementById('alertsList').innerHTML = html;
   });
-}
-function showAlerts() { fetch('/api/alerts/seen',{method:'POST'}); document.getElementById('alertBadge').className='alert-badge'; document.getElementById('alertBadge').textContent='0 条提醒'; }
-
-// ==================== EMAIL ====================
-function toggleEmailConfig() { var d=document.getElementById('emailConfig'); emailVisible=!emailVisible; d.style.display=emailVisible?'block':'none'; if(emailVisible) loadEmailCfg(); }
-function loadEmailCfg() { fetch('/api/email/config').then(function(r){return r.json()}).then(function(c){ document.getElementById('emailSender').value=c.sender_email||''; document.getElementById('emailReceiver').value=c.receiver_email||''; }); }
-function saveEmail() {
-  var s=document.getElementById('emailSender').value.trim(), a=document.getElementById('emailAuth').value.trim(), r=document.getElementById('emailReceiver').value.trim()||s;
-  if(!s||!a){document.getElementById('emailMsg').textContent='请填写完整';return}
-  fetch('/api/email/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender_email:s,auth_code:a,receiver_email:r})}).then(function(x){return x.json()}).then(function(d){document.getElementById('emailMsg').textContent=d.msg||'已保存';});
-}
-function testEmail() {
-  document.getElementById('emailMsg').textContent='发送中...';
-  var s=document.getElementById('emailSender').value.trim(), a=document.getElementById('emailAuth').value.trim(), r=document.getElementById('emailReceiver').value.trim()||s;
-  fetch('/api/email/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender_email:s,auth_code:a,receiver_email:r})}).then(function(x){return x.json()}).then(function(d){document.getElementById('emailMsg').textContent=d.msg||(d.ok?'成功':'失败');});
+  window.addEventListener('resize',function(){idxChartInst.resize();});
 }
 
-// ==================== WATCHLIST ====================
-function toggleWatch(nk, nm) {
-  var found = watchlist.find(function(w){return w.name_key===nk});
-  if (found) { fetch('/api/watchlist/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name_key:nk})}).then(function(){loadWatchlist();renderCards();}); }
-  else { fetch('/api/watchlist/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name_key:nk,name:nm,threshold:2})}).then(function(){loadWatchlist();renderCards();}); }
-}
-function loadWatchlist() {
-  fetch('/api/watchlist').then(function(r){return r.json()}).then(function(wl){
-    watchlist = wl || [];
-    var tbody = document.getElementById('wlBody');
-    if (!wl.length) { tbody.innerHTML = '<tr><td colspan="5" class="no-data">暂无自选</td></tr>'; return; }
-    tbody.innerHTML = wl.map(function(w){
-      var cls = (w.chg_rate||0)>0.1?'card-change up':((w.chg_rate||0)<-0.1?'card-change down':'');
-      return '<tr><td><b>'+w.name+'</b></td><td>'+(w.current_price||0).toFixed(2)+'</td><td class="'+cls+'">'+(w.chg_rate?(w.chg_rate>0?'+':'')+w.chg_rate.toFixed(2)+'%':'--')+'</td><td>±'+w.threshold+'%</td><td><button class="btn btn-sm btn-outline" onclick="removeWatch(\''+w.name_key+'\')">移除</button></td></tr>';
+// ========== RANK LIST ==========
+function loadRank(type,btn){
+  if(btn){document.querySelectorAll('#tab-rank .pbtn').forEach(function(b){b.classList.remove('on')});btn.classList.add('on')}
+  document.getElementById('rankBody').innerHTML='<tr><td colspan="6" class="nodata">加载中...</td></tr>';
+  fetch('/api/rank-list?type='+type).then(function(r){return r.json()}).then(function(list){
+    if(!list.length){document.getElementById('rankBody').innerHTML='<tr><td colspan="6" class="nodata">暂无数据</td></tr>';return}
+    document.getElementById('rankBody').innerHTML=list.map(function(i,n){
+      var cls=(i.chg_rate||0)>0?'up':((i.chg_rate||0)<0?'down':'flat');
+      return '<tr><td>'+(n+1)+'</td><td><b>'+i.name+'</b></td><td>'+(i.price?i.price.toFixed(2):'--')+'</td>'+
+        '<td class="'+cls+'">'+(i.chg_num>0?'+':'')+(i.chg_num||0).toFixed(2)+'</td>'+
+        '<td class="'+cls+'">'+(i.chg_rate>0?'+':'')+(i.chg_rate||0).toFixed(2)+'%</td>'+
+        '<td>'+(i.volume||0)+'</td></tr>';
     }).join('');
   });
 }
-function removeWatch(nk) { fetch('/api/watchlist/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name_key:nk})}).then(function(){loadWatchlist();renderCards();}); }
-function loadSkinMonList() {
+
+// ========== HOT SERIES ==========
+function loadHotSeries(){
+  fetch('/api/hot-series').then(function(r){return r.json()}).then(function(list){
+    if(!list.length){document.getElementById('hotCards').innerHTML='<div class="nodata">暂无</div>';return}
+    document.getElementById('hotCards').innerHTML=list.slice(0,20).map(function(s){
+      return '<div class="card"><div class="cname">'+(s.name||s.seriesName||'')+'</div>'+
+        '<div class="cprice">'+(s.avgPrice?s.avgPrice.toFixed(2):'--')+'</div>'+
+        '<div style="font-size:.72rem;color:var(--dim);">'+(s.count||0)+'件</div></div>';
+    }).join('');
+  });
+}
+
+// ========== SKIN MONITOR ==========
+function loadSkinMon(){
+  document.getElementById('skinBody').innerHTML='<tr><td colspan="6" class="nodata">加载中...</td></tr>';
   fetch('/api/skin-monitor/volume').then(function(r){return r.json()}).then(function(list){
-    var div = document.getElementById('skinMonList');
-    if (!list.length) { div.innerHTML = '<div class=\"no-data\">正在发现主流饰品...请稍后再刷新</div>'; return; }
-    div.innerHTML = '<div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:8px;">共监控 <b>'+list.length+'</b> 个主流饰品</div>' +
-      list.slice(0,30).map(function(m){
-        var spikeClass = m.vol_spike >= m.alert_threshold ? 'style="border-left:3px solid var(--red);"' : '';
-        var spikeTag = m.vol_spike >= m.alert_threshold ? ' <span style="background:var(--red);color:#fff;padding:1px 6px;border-radius:3px;font-size:0.7rem;">异动!</span>' : '';
-        return '<div '+spikeClass+' style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;">' +
-          '<div><b>'+m.skin_name+'</b>'+spikeTag+
-            '<div style="font-size:0.72rem;color:var(--text-secondary);">¥'+(m.current_price||0).toFixed(2)+' | 15min成交: <b>'+(m.vol_spike||0)+'件</b> (阈值'+m.alert_threshold+'件) | 总成交: '+(m.current_volume||0)+'件</div></div>' +
-          '<button class="btn btn-sm btn-outline" onclick="removeSkinMon('+m.skin_id+')">移除</button></div>';
-      }).join('');
+    if(!list.length){document.getElementById('skinBody').innerHTML='<tr><td colspan="6" class="nodata">发现主流饰品中, 请稍后刷新</td></tr>';return}
+    document.getElementById('skinBody').innerHTML=list.slice(0,50).map(function(m){
+      var spike=m.vol_spike||0,th=m.alert_threshold||15,isAlert=spike>=th;
+      var tag=isAlert?' <span style="background:var(--red);color:#fff;padding:1px 5px;border-radius:3px;font-size:.65rem;">异动</span>':'';
+      return '<tr style="'+(isAlert?'border-left:3px solid var(--red);':'')+'">'+
+        '<td><b>'+m.skin_name+'</b>'+tag+'</td>'+
+        '<td>'+(m.current_price||0).toFixed(2)+'</td>'+
+        '<td style="font-weight:600;color:'+(isAlert?'var(--red)':'var(--text)')+';">'+(spike||0)+'</td>'+
+        '<td>'+th+'</td><td>'+(m.current_volume||0)+'</td>'+
+        '<td><button class="btn btn-s btn-r" onclick="removeSM('+m.skin_id+')">删</button></td></tr>';
+    }).join('');
   });
 }
-function removeSkinMon(sid) {
-  fetch('/api/skin-monitor/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skin_id:sid})})
-    .then(function(){ loadSkinMonList(); });
-}
-function addSkinMonitor(sid, name) {
-  fetch('/api/skin-monitor/add',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({skin_id:sid, skin_name:name})})
-    .then(function(r){return r.json()}).then(function(d){ alert(d.msg||'已添加'); });
-}
+function removeSM(sid){fetch('/api/skin-monitor/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skin_id:sid})}).then(function(){loadSkinMon()})}
 
-function openAddWatch() {
-  var nk = prompt('输入指数 name_key (如 init, lease, main_weapon):'); if (!nk) return;
-  var nm = prompt('显示名称:'); if (!nm) return;
-  var th = parseFloat(prompt('预警阈值 % (如 2):', '2')) || 2;
-  fetch('/api/watchlist/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name_key:nk,name:nm,threshold:th})}).then(function(r){return r.json()}).then(function(d){alert(d.msg); loadWatchlist(); renderCards();});
-}
-
-// ==================== SEARCH ====================
-var skinCache = {};
-function doSearch() {
-  var q = document.getElementById('searchInput').value.trim(); if (!q) return;
-  document.getElementById('searchResults').innerHTML = '<div class="no-data">搜索中...</div>';
-  document.getElementById('skinDetail').style.display = 'none';
+// ========== SEARCH ==========
+function search(){
+  var q=document.getElementById('sInput').value.trim();if(!q)return;
+  document.getElementById('sResults').innerHTML='<div class="nodata">搜索中...</div>';
+  document.getElementById('skinDetail').style.display='none';
   fetch('/api/search?q='+encodeURIComponent(q)).then(function(r){return r.json()}).then(function(list){
-    if (!list||!list.length) { document.getElementById('searchResults').innerHTML = '<div class="no-data">未找到</div>'; return; }
-    document.getElementById('searchResults').innerHTML = list.slice(0,20).map(function(s){
-      return '<div class="skin-item" onclick="loadSkinDetail('+s.id+')" style="background:var(--card-bg);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:6px;cursor:pointer;font-size:0.85rem;transition:border-color .2s;"><div style="font-weight:600;">'+s.value+'</div><div style="color:var(--text-secondary);font-size:0.75rem;margin-top:3px;">ID: '+s.id+' - 点击查看详情</div></div>';
+    if(!list.length){document.getElementById('sResults').innerHTML='<div class="nodata">未找到</div>';return}
+    document.getElementById('sResults').innerHTML=list.slice(0,25).map(function(s){
+      return '<div class="card" onclick="loadSkin('+s.id+')" style="margin-bottom:5px;cursor:pointer">'+
+        '<div style="font-weight:600;font-size:.82rem;">'+s.value+'</div><div style="font-size:.7rem;color:var(--dim);margin-top:2px;">ID: '+s.id+' · 点击查看详情</div></div>';
     }).join('');
   });
 }
 
-function loadSkinDetail(id) {
-  var div = document.getElementById('skinDetail');
-  div.style.display = 'block';
-  div.innerHTML = '<div class="no-data">加载中...</div>';
-  if (skinCache[id]) { showSkinDetail(skinCache[id]); return; }
-  fetch('/api/skin/'+id).then(function(r){return r.json()}).then(function(skin){
-    skinCache[id] = skin;
-    showSkinDetail(skin);
-  }).catch(function(e){ div.innerHTML = '<div class="no-data">加载失败: '+e+'</div>'; });
-}
-
-function showSkinDetail(skin) {
-  var name = skin.market_hash_name || skin.name || '';
-
-  // 平台数据
-  var platforms = [
-    {name:'Buff 网易', key:'buff', sell:skin.buff_sell_price, buy:skin.buff_buy_price, sn:skin.buff_sell_num, bn:skin.buff_buy_num},
-    {name:'YYYP 悠悠', key:'yyyp', sell:skin.yyyp_sell_price, buy:skin.yyyp_buy_price, sn:skin.yyyp_sell_num, bn:skin.yyyp_buy_num, lease:skin.yyyp_lease_num, leaseP:skin.yyyp_lease_price, leaseA:skin.yyyp_lease_annual, trans:skin.yyyp_transfer_price},
-    {name:'Steam 市场', key:'steam', sell:skin.steam_sell_price, buy:skin.steam_buy_price, sn:skin.steam_sell_num, bn:skin.steam_buy_num},
-    {name:'C5', key:'c5', sell:skin.c5_sell_price, buy:skin.c5_buy_price, sn:skin.c5_sell_num, bn:skin.c5_buy_num},
-    {name:'IGXE', key:'igxe', sell:skin.igxe_sell_price, buy:skin.igxe_buy_price, sn:skin.igxe_sell_num, bn:skin.igxe_buy_num, lease:skin.igxe_lease_num, leaseP:skin.igxe_lease_price},
-    {name:'ECO', key:'eco', sell:skin.eco_sell_price, buy:skin.eco_buy_price, sn:skin.eco_sell_num, bn:skin.eco_buy_num},
-    {name:'R8', key:'r8', sell:skin.r8_sell_price, sn:skin.r8_sell_num},
-  ];
-
-  // 平台价格卡片
-  var platHtml = '';
-  platforms.forEach(function(p){
-    if (!p.sell && !p.buy && !p.sn) return;
-    platHtml += '<div style="background:var(--bg);border-radius:8px;padding:10px 12px;min-width:140px;">' +
-      '<div style="font-size:0.72rem;color:var(--accent);font-weight:600;margin-bottom:6px;">'+p.name+'</div>';
-    if (p.sell) platHtml += '<div style="font-size:0.78rem;"><span style="color:var(--text-secondary);">售价 </span><b>¥'+p.sell.toFixed(2)+'</b><span style="color:var(--text-secondary);font-size:0.7rem;"> x'+(p.sn||0)+'</span></div>';
-    if (p.buy) platHtml += '<div style="font-size:0.78rem;"><span style="color:var(--text-secondary);">求购 </span><b>¥'+p.buy.toFixed(2)+'</b><span style="color:var(--text-secondary);font-size:0.7rem;"> x'+(p.bn||0)+'</span></div>';
-    if (p.lease) platHtml += '<div style="font-size:0.78rem;"><span style="color:var(--text-secondary);">在租 </span><b>'+p.lease+'件</b> ¥'+(p.leaseP||0).toFixed(2)+'/天 年化'+(p.leaseA||0).toFixed(1)+'%</div>';
-    if (p.trans) platHtml += '<div style="font-size:0.78rem;"><span style="color:var(--text-secondary);">转让 </span><b>¥'+p.trans.toFixed(2)+'</b></div>';
-    platHtml += '</div>';
-  });
-
-  // Buff 历史涨跌
-  var histHtml = '';
-  (skin._price_history||[]).forEach(function(h){
-    var color = (h.rate||0) >= 0 ? 'var(--green)' : 'var(--red)';
-    var barW = Math.min(Math.abs(h.rate||0)*2.5, 100);
-    histHtml += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:0.78rem;">' +
-      '<span style="width:36px;color:var(--text-secondary);">'+h.label+'</span>' +
-      '<div style="flex:1;height:14px;background:var(--bg);border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+barW+'%;background:'+color+';border-radius:3px;"></div></div>' +
-      '<span style="color:'+color+';min-width:60px;text-align:right;font-weight:600;">'+(h.rate>0?'+':'')+(h.rate||0).toFixed(2)+'%</span>' +
-      '<span style="color:var(--text-secondary);min-width:50px;text-align:right;">'+(h.change>0?'+':'')+(h.change||0).toFixed(2)+'</span>' +
-    '</div>';
-  });
-
-  // YYYP 历史涨跌
-  var yypHist = '';
-  var yypKeys = [
-    {l:'1天',k:'yyyp_sell_price_rate_1',c:'yyyp_sell_price_1'},
-    {l:'7天',k:'yyyp_sell_price_rate_7',c:'yyyp_sell_price_7'},
-    {l:'15天',k:'yyyp_sell_price_rate_15',c:'yyyp_sell_price_15'},
-    {l:'30天',k:'yyyp_sell_price_rate_30',c:'yyyp_sell_price_30'},
-    {l:'90天',k:'yyyp_sell_price_rate_90',c:'yyyp_sell_price_90'},
-    {l:'180天',k:'yyyp_sell_price_rate_180',c:'yyyp_sell_price_180'},
-    {l:'365天',k:'yyyp_sell_price_rate_365',c:'yyyp_sell_price_365'},
-  ];
-  yypKeys.forEach(function(h){
-    var rate = skin[h.k]; var chg = skin[h.c];
-    if (rate === undefined) return;
-    var color = (rate||0) >= 0 ? 'var(--green)' : 'var(--red)';
-    var barW = Math.min(Math.abs(rate||0)*2.5, 100);
-    yypHist += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:0.78rem;">' +
-      '<span style="width:36px;color:var(--text-secondary);">'+h.l+'</span>' +
-      '<div style="flex:1;height:14px;background:var(--bg);border-radius:3px;overflow:hidden;"><div style="height:100%;width:'+barW+'%;background:'+color+';border-radius:3px;"></div></div>' +
-      '<span style="color:'+color+';min-width:60px;text-align:right;font-weight:600;">'+(rate>0?'+':'')+(rate||0).toFixed(2)+'%</span>' +
-      '<span style="color:var(--text-secondary);min-width:50px;text-align:right;">'+(chg>0?'+':'')+(chg||0).toFixed(2)+'</span>' +
-    '</div>';
-  });
-
-  var imgTag = skin.img ? '<img src="'+skin.img+'" style="width:120px;height:90px;object-fit:contain;border-radius:6px;background:#1a1d23;" onerror="this.style.display=\'none\'">' : '';
-
-  var html = '<div style="background:var(--card-bg);border:1px solid var(--accent);border-radius:10px;padding:18px;margin-top:12px;">' +
-    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px;">' +
-      '<div style="display:flex;gap:14px;align-items:center;">'+imgTag+
-        '<div><div style="font-size:1rem;font-weight:700;">'+name+'</div>' +
-        '<div style="font-size:0.75rem;color:var(--text-secondary);margin-top:2px;">ID: '+skin.id+' | 磨损: '+(skin.min_float||0)+'~'+(skin.max_float||0)+' | 排名 #'+(skin.rank_num||'-')+'</div>' +
-        '<div style="font-size:0.75rem;color:var(--text-secondary);">成交量: '+(skin.turnover_number||0)+'件 | 均价: ¥'+(skin.turnover_avg_price||0).toFixed(2)+' | 存量: '+(skin.statistic||0)+'</div></div>' +
-      '</div>' +
-      '<div style="display:flex;gap:6px;">' +
-        '<button class="btn btn-sm" onclick="addSkinMonitor('+skin.id+',\''+(skin.market_hash_name||skin.name||'').replace(/'/g,'')+'\')">添加到监控</button>' +
-        '<button class="btn btn-sm btn-outline" onclick="document.getElementById(\'skinDetail\').style.display=\'none\'">X</button>' +
-      '</div>' +
-    '</div>' +
-    '<div class="section-title">全平台价格对比</div>' +
-    '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:8px;margin-bottom:16px;">'+platHtml+'</div>' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">' +
-      '<div><div class="section-title">Buff 历史涨跌</div>'+histHtml+'</div>' +
-      '<div><div class="section-title">YYYP 悠悠有品 历史涨跌</div>'+(yypHist||'<div class="no-data">暂无</div>')+'</div>' +
-    '</div>' +
-    '<div style="font-size:0.7rem;color:var(--text-secondary);margin-top:12px;">数据来源: csqaq.com | 柱状为百分比变化 | 右侧为价格变化(元)</div>' +
-    '</div>';
-
-  // 图表容器 + 周期切换
-  html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;">' +
-    '<div class="section-title" style="margin:0;">K线走势</div>' +
-    '<div style="display:flex;gap:4px;">' +
-      '<button class="btn btn-sm period-btn active" onclick="loadSkinChart('+skin.id+',\'7\',this)">分时</button>' +
-      '<button class="btn btn-sm period-btn" onclick="loadSkinChart('+skin.id+',\'30\',this)">日线</button>' +
-      '<button class="btn btn-sm period-btn" onclick="loadSkinChart('+skin.id+',\'365\',this)">周线</button>' +
-    '</div></div>' +
-    '<div id="skinChart" style="width:100%;height:380px;background:var(--bg);border-radius:8px;display:flex;align-items:center;justify-content:center;"><div class="no-data">图表加载中...</div></div>' +
-    '<style>.period-btn{padding:4px 12px;font-size:0.75rem;border-radius:4px;border:1px solid var(--border);background:transparent;color:var(--text-secondary);cursor:pointer;}.period-btn.active{background:var(--accent);color:#fff;border-color:var(--accent);}</style>';
-
-  document.getElementById('skinDetail').innerHTML = html;
-  document.getElementById('skinDetail').scrollIntoView({behavior:'smooth'});
-
-  // 延迟加载
-  setTimeout(function(){ loadSkinChart(skin.id, '7'); }, 400);
-}
-
-var currentSkinChart = null;
-function loadSkinChart(skinId, period, btn) {
-  // 切换按钮状态
-  if (btn) {
-    document.querySelectorAll('.period-btn').forEach(function(b){ b.classList.remove('active'); });
-    btn.classList.add('active');
-  }
-  if (typeof echarts === 'undefined') {
-    var chartDom = document.getElementById('skinChart'); if (chartDom) chartDom.innerHTML = '<div class=\"no-data\">ECharts 加载中, 请稍后再试</div>';
-    setTimeout(function(){ loadSkinChart(skinId, period, btn); }, 1000);
-    return;
-  }
-  var chartDom = document.getElementById('skinChart'); if (!chartDom) return;
-  chartDom.innerHTML = '<div class=\"no-data\"><span class=\"spinner\" style=\"display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;margin-right:6px;vertical-align:middle;\"></span>加载中...</div>';
-
-  fetch('/api/skin/'+skinId+'/chart?period='+period).then(function(r){return r.json()}).then(function(cd){
-    var pts = cd.points || [];
-    if (!pts.length) { chartDom.innerHTML = '<div class=\"no-data\">暂无图表数据</div>'; return; }
-
-    // 聚合为 OHLC candlestick
-    var ohlc = [], dates = [];
-    var bucketSize = period === '7' ? 4 : (period === '30' ? 24 : 168); // 7d: ~2h bars, 30d: daily, 365d: weekly
-    for (var i = 0; i < pts.length; i += bucketSize) {
-      var chunk = pts.slice(i, i + bucketSize);
-      var open = chunk[0].price, close = chunk[chunk.length-1].price;
-      var high = open, low = open;
-      chunk.forEach(function(p){ if(p.price > high) high = p.price; if(p.price < low) low = p.price; });
-      ohlc.push([open, close, low, high]);
-      dates.push(chunk[0].t);
-    }
-
-    // 计算 MA5, MA10
-    function calcMA(data, n) {
-      var result = [];
-      for (var i = 0; i < data.length; i++) {
-        if (i < n-1) { result.push(null); continue; }
-        var sum = 0;
-        for (var j = 0; j < n; j++) sum += data[i-j][1]; // close price
-        result.push(+(sum/n).toFixed(2));
-      }
-      return result;
-    }
-    var ma5 = calcMA(ohlc, 5);
-    var ma10 = calcMA(ohlc, 10);
-
-    if (currentSkinChart) currentSkinChart.dispose();
-    var chart = echarts.init(chartDom);
-    currentSkinChart = chart;
-
-    var upColor = '#27ae60', downColor = '#e74c3c';
-    chart.setOption({
-      animation: false,
-      tooltip: {trigger:'axis',backgroundColor:'#21252b',borderColor:'#2c313a',textStyle:{color:'#e0e0e0'},
-        axisPointer:{type:'cross'},
-        formatter: function(params) {
-          var d = params[0]; if (!d) return '';
-          return d.axisValue + '<br/>' +
-            '开: <b>' + d.data[1] + '</b> 收: <b>' + d.data[2] + '</b><br/>' +
-            '低: <b>' + d.data[3] + '</b> 高: <b>' + d.data[4] + '</b>';
-        }
-      },
-      grid: {left:70,right:20,top:20,bottom:80},
-      xAxis: {type:'category',data:dates,axisLine:{lineStyle:{color:'#2c313a'}},axisLabel:{color:'#8b949e',fontSize:10,interval:Math.max(1,Math.floor(dates.length/10))}},
-      yAxis: {type:'value',scale:true,axisLabel:{color:'#8b949e'},splitLine:{lineStyle:{color:'#2c313a',type:'dashed'}}},
-      dataZoom: [
-        {type:'slider',start:50,end:100,height:25,bottom:10,borderColor:'#2c313a',backgroundColor:'#21252b',fillerColor:'rgba(74,158,255,0.15)',handleStyle:{color:'#4a9eff'},textStyle:{color:'#8b949e'}},
-        {type:'inside',zoomOnMouseWheel:true,moveOnMouseMove:true}
-      ],
-      series: [
-        {name:'K线',type:'candlestick',data:ohlc,
-          itemStyle:{color:upColor,color0:downColor,borderColor:upColor,borderColor0:downColor},
-          markPoint:{data:[{type:'max',name:'最高',symbol:'pin',symbolSize:30,itemStyle:{color:upColor},label:{fontSize:10,color:'#fff'}},{type:'min',name:'最低',symbol:'pin',symbolSize:30,itemStyle:{color:downColor},label:{fontSize:10,color:'#fff'}}]}
-        },
-        {name:'MA5',type:'line',data:ma5,smooth:true,symbol:'none',lineStyle:{color:'#f39c12',width:1}},
-        {name:'MA10',type:'line',data:ma10,smooth:true,symbol:'none',lineStyle:{color:'#9b59b6',width:1}},
-      ]
+function loadSkin(sid){
+  var div=document.getElementById('skinDetail');div.style.display='block';div.innerHTML='<div class="nodata">加载中...</div>';
+  fetch('/api/skin/'+sid).then(function(r){return r.json()}).then(function(skin){
+    var name=skin.market_hash_name||skin.name||'';
+    var platforms=[{name:'Buff',sell:skin.buff_sell_price,buy:skin.buff_buy_price,sn:skin.buff_sell_num,bn:skin.buff_buy_num},
+      {name:'YYYP',sell:skin.yyyp_sell_price,buy:skin.yyyp_buy_price,sn:skin.yyyp_sell_num,bn:skin.yyyp_buy_num,lease:skin.yyyp_lease_num,lp:skin.yyyp_lease_price,la:skin.yyyp_lease_annual},
+      {name:'Steam',sell:skin.steam_sell_price,buy:skin.steam_buy_price,sn:skin.steam_sell_num,bn:skin.steam_buy_num},
+      {name:'C5',sell:skin.c5_sell_price,buy:skin.c5_buy_price,sn:skin.c5_sell_num},{name:'IGXE',sell:skin.igxe_sell_price,sn:skin.igxe_sell_num},
+      {name:'ECO',sell:skin.eco_sell_price,sn:skin.eco_sell_num}];
+    var ph='';
+    platforms.forEach(function(p){if(!p.sell&&!p.buy)return;
+      ph+='<div class="plat"><div class="pname">'+p.name+'</div>';
+      if(p.sell)ph+='<div class="pval">售 <b>'+p.sell.toFixed(2)+'</b> x'+(p.sn||0)+'</div>';
+      if(p.buy)ph+='<div class="pval">购 <b>'+p.buy.toFixed(2)+'</b> x'+(p.bn||0)+'</div>';
+      if(p.lease)ph+='<div class="pval">租 '+p.lease+'件 ¥'+(p.lp||0).toFixed(2)+'/d</div>';
+      ph+='</div>';
     });
-    window.addEventListener('resize', function(){ chart.resize(); });
-  }).catch(function(e){ chartDom.innerHTML = '<div class=\"no-data\">图表数据加载失败: '+e+'</div>'; });
+    var histH='';(skin._price_history||[]).forEach(function(h){var c=(h.rate||0)>=0?'var(--green)':'var(--red)';
+      histH+='<div style="display:flex;align-items:center;gap:8px;margin-bottom:3px;font-size:.75rem;">'+
+        '<span style="width:35px;color:var(--dim);">'+h.label+'</span>'+
+        '<div style="flex:1;height:12px;background:var(--bg);border-radius:3px;"><div style="height:100%;width:'+Math.min(Math.abs(h.rate||0)*3,100)+'%;background:'+c+';border-radius:3px;"></div></div>'+
+        '<span style="color:'+c+';min-width:55px;text-align:right;font-weight:600;">'+(h.rate>0?'+':'')+(h.rate||0).toFixed(2)+'%</span></div>';
+    });
+    var html='<div class="panel" style="margin-top:10px;border-color:var(--accent);">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">'+
+        '<div><div style="font-weight:700;font-size:.95rem;">'+name+'</div>'+
+        '<div style="font-size:.7rem;color:var(--dim);">ID:'+skin.id+' | 成交'+(skin.turnover_number||0)+'件 均价'+(skin.turnover_avg_price||0).toFixed(2)+' | 存量'+(skin.statistic||0)+' | 排名#'+(skin.rank_num||'-')+'</div></div>'+
+        '<div style="display:flex;gap:6px;"><button class="btn btn-s" onclick="addSM('+skin.id+',\''+(name.replace(/'/g,''))+'\')">监控</button>'+
+        '<button class="btn btn-s btn-o" onclick="document.getElementById(\'skinDetail\').style.display=\'none\'">X</button></div>'+
+      '</div>'+
+      '<div class="ptitle">全平台价格</div><div class="plats">'+ph+'</div>'+
+      '<div class="ptitle">Buff 历史涨跌</div>'+histH+
+      '<div class="ptitle" style="margin-top:12px;">K线走势'+
+        ' <button class="pbtn on" onclick="skinK('+skin.id+',\'7\',this)">分时</button>'+
+        ' <button class="pbtn" onclick="skinK('+skin.id+',\'30\',this)">日线</button>'+
+        ' <button class="pbtn" onclick="skinK('+skin.id+',\'365\',this)">周线</button></div>'+
+      '<div class="chart" id="skinChart" style="height:350px;"><div class="nodata">加载中...</div></div></div>';
+    div.innerHTML=html;div.scrollIntoView({behavior:'smooth'});
+    setTimeout(function(){skinK(sid,'7');},500);
+  });
 }
 
-// ==================== TABS ====================
-function switchTab(tab, btn) {
-  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});
-  btn.classList.add('active');
-  ['dashboard','watchlist','skinmon','search'].forEach(function(t){ document.getElementById('tab-'+t).style.display = (t===tab)?'':'none'; });
-  if (tab==='watchlist') loadWatchlist();
-  if (tab==='skinmon') loadSkinMonList();
-  if (tab==='dashboard' && typeof echarts !== 'undefined' && mainChart) mainChart.resize();
+function skinK(sid,period,btn){
+  if(btn){var btns=document.querySelectorAll('#skinChart').length?document.querySelectorAll('#skinDetail .pbtn'):[];btns.forEach(function(b){b.classList.remove('on')});if(btn)btn.classList.add('on')}
+  if(typeof echarts==='undefined'){setTimeout(function(){skinK(sid,period,btn)},1000);return}
+  var dom=document.getElementById('skinChart');if(!dom)return;dom.innerHTML='';
+  if(skinChartInst&&!skinChartInst.isDisposed())skinChartInst.dispose();
+  skinChartInst=echarts.init(dom);
+  fetch('/api/skin/'+sid+'/chart?period='+period).then(function(r){return r.json()}).then(function(d){
+    var pts=d.points||[];if(!pts.length){dom.innerHTML='<div class=\"nodata\">暂无</div>';return}
+    var dates=[],oData=[];
+    var bs=period==='7'?4:(period==='30'?24:168);
+    for(var i=0;i<pts.length;i+=bs){
+      var chunk=pts.slice(i,i+bs),o=chunk[0].price,c=chunk[chunk.length-1].price,h=o,l=o;
+      chunk.forEach(function(p){if(p.price>h)h=p.price;if(p.price<l)l=p.price;});
+      oData.push([o,c,l,h]);dates.push(chunk[0].t);
+    }
+    var ma5=[];for(var i=0;i<oData.length;i++){if(i<4){ma5.push(null);continue}var s5=0;for(var j=0;j<5;j++)s5+=oData[i-j][1];ma5.push(+(s5/5).toFixed(2));}
+    skinChartInst.setOption({
+      animation:false,tooltip:{trigger:'axis',backgroundColor:'#161a1f',borderColor:'#1e2329',textStyle:{color:'#d1d4d8'},axisPointer:{type:'cross'}},
+      grid:{left:70,right:20,top:10,bottom:70},
+      xAxis:{type:'category',data:dates,axisLine:{lineStyle:{color:'#1e2329'}},axisLabel:{color:'#6b7280',fontSize:10,interval:Math.max(1,Math.floor(dates.length/8))}},
+      yAxis:{type:'value',scale:true,axisLabel:{color:'#6b7280'},splitLine:{lineStyle:{color:'#1e2329',type:'dashed'}}},
+      dataZoom:[{type:'slider',start:50,end:100,height:22,bottom:8,borderColor:'#1e2329',backgroundColor:'#161a1f',fillerColor:'rgba(59,130,246,.12)',handleStyle:{color:'#3b82f6'},textStyle:{color:'#6b7280'}},{type:'inside',zoomOnMouseWheel:true,moveOnMouseMove:true}],
+      series:[{type:'candlestick',data:oData,itemStyle:{color:'#22c55e',color0:'#ef4444',borderColor:'#22c55e',borderColor0:'#ef4444'}},{name:'MA5',type:'line',data:ma5,smooth:true,symbol:'none',lineStyle:{color:'#f59e0b',width:1}}]
+    });
+  });
 }
+function addSM(sid,name){fetch('/api/skin-monitor/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({skin_id:sid,skin_name:name})}).then(function(){alert('已添加')})}
 
-// ==================== UTILS ====================
-function fmtTime(iso) { if(!iso)return'--'; var d=new Date(iso),p=function(n){return String(n).padStart(2,'0')}; return p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds()); }
+// ========== WATCHLIST ==========
+function toggleW(nk,nm){
+  fetch('/api/watchlist').then(function(r){return r.json()}).then(function(wl){
+    var f=wl.find(function(w){return w.name_key===nk});
+    if(f) fetch('/api/watchlist/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name_key:nk})}).then(function(){renderCards()});
+    else fetch('/api/watchlist/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name_key:nk,name:nm,threshold:2})}).then(function(){renderCards()});
+  });
+}
+function loadWl(){
+  fetch('/api/watchlist').then(function(r){return r.json()}).then(function(wl){
+    if(!wl.length){document.getElementById('wlBody').innerHTML='<tr><td colspan="5" class="nodata">点击大盘指数卡片上的 ⭐ 添加</td></tr>';return}
+    document.getElementById('wlBody').innerHTML=wl.map(function(w){
+      var cls=(w.chg_rate||0)>0.1?'up':((w.chg_rate||0)<-0.1?'down':'flat');
+      return '<tr><td><b>'+w.name+'</b></td><td>'+(w.current_price||0).toFixed(2)+'</td>'+
+        '<td class="'+cls+'">'+(w.chg_rate>0?'+':'')+(w.chg_rate||0).toFixed(2)+'%</td>'+
+        '<td>±'+w.threshold+'%</td><td><button class="btn btn-s btn-r" onclick="remWl(\''+w.name_key+'\')">删</button></td></tr>';
+    }).join('');
+  });
+}
+function remWl(nk){fetch('/api/watchlist/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name_key:nk})}).then(function(){loadWl();renderCards()})}
 
-// ==================== START ====================
+// ========== EMAIL ==========
+function toggleEmail(){var d=document.getElementById('emailCfg');d.style.display=d.style.display==='none'?'block':'none';if(d.style.display==='block'){fetch('/api/email/config').then(function(r){return r.json()}).then(function(c){document.getElementById('eSender').value=c.sender_email||'';document.getElementById('eRecv').value=c.receiver_email||''})}}
+function saveEmail(){var s=document.getElementById('eSender').value.trim(),a=document.getElementById('eAuth').value.trim(),r=document.getElementById('eRecv').value.trim()||s;if(!s||!a){document.getElementById('eMsg').textContent='请填写完整';return}fetch('/api/email/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender_email:s,auth_code:a,receiver_email:r})}).then(function(x){return x.json()}).then(function(d){document.getElementById('eMsg').textContent=d.msg||'已保存'})}
+function testEmail(){var s=document.getElementById('eSender').value.trim(),a=document.getElementById('eAuth').value.trim(),r=document.getElementById('eRecv').value.trim()||s;document.getElementById('eMsg').textContent='发送中...';fetch('/api/email/test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sender_email:s,auth_code:a,receiver_email:r})}).then(function(x){return x.json()}).then(function(d){document.getElementById('eMsg').textContent=d.msg||(d.ok?'成功':'失败')})}
+
+// ========== ALERTS ==========
+function showAlerts(){fetch('/api/alerts/seen',{method:'POST'});document.getElementById('badge').className='badge';document.getElementById('badge').textContent='0'}
+
+// ========== UTILS ==========
+function fmt(iso){if(!iso)return'--';var d=new Date(iso);var p=function(n){return String(n).padStart(2,'0')};return p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds())}
+
+// ========== BOOT ==========
 (function start(){
-  if (document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', start); return; }
-  console.log('CS监控启动, 数据加载中...');
-  loadAll().then(function(){ console.log('初始数据加载完成, ' + indices.length + ' 个指数'); });
-  loadAlerts();
-  setTimeout(function(){ selectCard('init'); }, 1500);
-  setInterval(loadAll, 60000);
-  setInterval(loadAlerts, 30000);
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',start);return}
+  loadDash();setInterval(loadDash,60000);
+  setTimeout(function(){selCard('init')},1500);
+  setTimeout(function(){loadRank('rise')},3000);
 })();
 </script>
 </body>
