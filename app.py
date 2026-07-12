@@ -81,19 +81,19 @@ def get_email_config():
         r = conn.execute("SELECT * FROM email_config WHERE enabled=1 LIMIT 1").fetchone()
         return dict(r) if r else None
 
-PUSHPLUS_TOKEN = "oc_5102c59bcb482e5e71132d69deb82277"
+DINGTALK_TOKEN = "dcc66be677403ec3a76d66b4a33169e914d40bf64782eead62d6669e94fd5a8f"
+DINGTALK_SECRET = "SECe8aea37f4a6e964b28b35d75880b826a0c1dddc8b3069108b3000382671b7c78"
 
 def send_alert_notification(message: str):
-    """通过 PushPlus 推送微信通知 (QQ邮箱作为备用)"""
-    # PushPlus 推送
+    """钉钉机器人推送 (QQ邮箱备用)"""
+    import hmac as _hmac, hashlib as _hashlib, base64 as _b64, urllib.parse as _urlp
     try:
-        r = requests.post("http://www.pushplus.plus/send", json={
-            "token": PUSHPLUS_TOKEN,
-            "title": f"CS2行情-{message[:30]}",
-            "content": f"<h3>{message}</h3><p>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p><p>csqaq.com</p>"
-        }, timeout=10)
-        if r.status_code == 200: print(f"[PUSH] 已推送")
-    except Exception as e: print(f"[PUSH] 失败: {e}")
+        ts = str(round(time.time() * 1000))
+        sign = _b64.b64encode(_hmac.new(DINGTALK_SECRET.encode(), f'{ts}\n{DINGTALK_SECRET}'.encode(), _hashlib.sha256).digest())
+        url = f"https://oapi.dingtalk.com/robot/send?access_token={DINGTALK_TOKEN}&timestamp={ts}&sign={_urlp.quote_plus(sign.decode())}"
+        r = requests.post(url, json={"msgtype":"markdown","markdown":{"title":"CS2行情异动","text":f"### CS2行情异动\n> {message}\n\n###### {datetime.now().strftime('%m-%d %H:%M')} | csqaq.com"}}, timeout=10)
+        if r.status_code == 200: print(f"[DING] 已推送")
+    except Exception as e: print(f"[DING] 失败: {e}")
 
     # QQ邮箱备用
     cfg = get_email_config()
