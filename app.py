@@ -231,7 +231,13 @@ def auto_discover_all_mainstream():
 def check_skin_volume():
     with sqlite3.connect(str(DB_PATH)) as conn:
         conn.row_factory = sqlite3.Row
-        skins = conn.execute("SELECT * FROM skin_monitor WHERE enabled=1").fetchall()
+        # 按成交量降序, 优先巡检活跃皮肤
+        # 只巡检有成交量的活跃皮肤 (冷门皮肤每3轮才查1次)
+        cycle = int(time.time() / 300)  # 5分钟一轮
+        skins = conn.execute(
+            "SELECT * FROM skin_monitor WHERE enabled=1 AND (current_volume>50 OR id%3=? OR last_checked IS NULL) ORDER BY current_volume DESC",
+            (cycle % 3,)
+        ).fetchall()
     now = datetime.now().isoformat()
     alerts = 0
     for skin in skins:
@@ -288,7 +294,7 @@ def check_skin_volume():
                 _save_alert(skin["skin_name"], "volume_spike", msg)
                 send_alert_notification(msg)
                 print(f"[VOLUME] {msg}")
-            time.sleep(1.1)
+            time.sleep(0.15)
         except Exception as e: print(f"[VOLUME] err {skin['skin_id']}: {e}")
     if alerts: print(f"[VOLUME] {alerts} alerts")
 
