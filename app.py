@@ -545,8 +545,8 @@ def api_email_config_set():
     d = request.get_json()
     with sqlite3.connect(str(DB_PATH)) as conn:
         conn.execute("DELETE FROM email_config")
-        conn.execute("INSERT INTO email_config (sender_email,auth_code,receiver_email,enabled) VALUES (?,?,?,1)",
-                     (d.get("sender_email"), d.get("auth_code"), d.get("receiver_email", d.get("sender_email", ""))))
+        conn.execute("INSERT INTO email_config (smtp_server,smtp_port,sender_email,auth_code,receiver_email,enabled) VALUES (?,?,?,?,?,1)",
+                     (d.get("smtp_server","smtp.qq.com"), d.get("smtp_port",465), d.get("sender_email"), d.get("auth_code"), d.get("receiver_email", d.get("sender_email", ""))))
         conn.commit()
     return jsonify({"ok": True})
 
