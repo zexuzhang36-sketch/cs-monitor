@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CS2 饰品行情监控</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>
+  :root {
+    --bg: #1a1d23; --card-bg: #21252b; --border: #2c313a;
+    --text: #e0e0e0; --text-secondary: #8b949e;
+    --green: #27ae60; --red: #e74c3c; --accent: #4a9eff;
+    --accent-glow: rgba(74,158,255,0.15);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    min-height: 100vh;
+  }
+
+  .header {
+    background: var(--card-bg); border-bottom: 1px solid var(--border);
+    padding: 12px 24px; display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .header h1 { font-size: 1.15rem; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+  .header h1 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+  .header-right { display: flex; align-items: center; gap: 14px; font-size: 0.82rem; color: var(--text-secondary); }
+  .alert-badge {
+    background: var(--red); color: #fff; border-radius: 12px;
+    padding: 3px 12px; font-size: 0.78rem; font-weight: 600; cursor: pointer; border: none;
+  }
+  .alert-badge.has-alert { animation: shake 0.5s ease-in-out; }
+  @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+
+  .container { max-width: 1400px; margin: 0 auto; padding: 18px 24px; }
+
+  /* tabs */
+  .tabs { display: flex; gap: 2px; margin-bottom: 18px; }
+  .tab-btn {
+    padding: 8px 20px; border: 1px solid var(--border); background: transparent;
+    color: var(--text-secondary); cursor: pointer; font-size: 0.85rem; border-radius: 6px 6px 0 0;
+    transition: all 0.2s;
+  }
+  .tab-btn.active { background: var(--card-bg); color: var(--text); border-bottom-color: var(--card-bg); }
+
+  /* index cards */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px; margin-bottom: 20px;
+  }
+  .index-card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px; cursor: pointer; transition: all 0.2s;
+  }
+  .index-card:hover { border-color: var(--accent); box-shadow: 0 0 16px var(--accent-glow); transform: translateY(-1px); }
+  .index-card.selected { border-color: var(--accent); box-shadow: 0 0 16px var(--accent-glow); }
+  .index-card.watched { border-left: 3px solid #f39c12; }
+  .index-card .card-name { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; display: flex; justify-content: space-between; align-items: center; }
+  .index-card .card-price { font-size: 1.3rem; font-weight: 700; }
+  .index-card .card-change { font-size: 0.82rem; font-weight: 600; margin-top: 2px; }
+  .card-change.up { color: var(--green); }
+  .card-change.down { color: var(--red); }
+  .card-change.neutral { color: var(--text-secondary); }
+  .watch-star { color: #f39c12; font-size: 0.85rem; cursor: pointer; opacity: 0.4; transition: opacity 0.2s; }
+  .watch-star.active { opacity: 1; }
+
+  .section-title { font-size: 0.95rem; font-weight: 600; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .section-title::before { content: ''; width: 3px; height: 16px; background: var(--accent); border-radius: 2px; }
+
+  /* charts + alerts row */
+  .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 14px; margin-bottom: 20px; }
+  @media (max-width: 900px) { .charts-row { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px;
+  }
+  .chart-box { width: 100%; height: 360px; }
+
+  .alert-item {
+    padding: 10px 12px; border-radius: 6px; margin-bottom: 6px; font-size: 0.8rem;
+    border-left: 3px solid var(--red); background: rgba(231,76,60,0.08);
+  }
+  .alert-item.watchlist { border-left-color: #f39c12; background: rgba(243,156,18,0.08); }
+  .alert-item .alert-time { color: var(--text-secondary); font-size: 0.72rem; margin-top: 4px; }
+  .no-alerts { color: var(--text-secondary); font-size: 0.85rem; text-align: center; padding: 20px; }
+
+  /* search */
+  .search-bar { display: flex; gap: 8px; margin-bottom: 14px; }
+  .search-bar input {
+    flex: 1; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--card-bg); color: var(--text); font-size: 0.88rem; outline: none;
+  }
+  .search-bar input:focus { border-color: var(--accent); }
+  .btn {
+    padding: 9px 18px; border-radius: 8px; border: none;
+    background: var(--accent); color: #fff; font-weight: 600; cursor: pointer; font-size: 0.85rem;
+  }
+  .btn:hover { opacity: 0.85; }
+  .btn-sm { padding: 5px 12px; font-size: 0.78rem; }
+  .btn-outline { background: transparent; border: 1px solid var(--accent); color: var(--accent); }
+
+  .search-results { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; margin-bottom: 18px; }
+  .skin-result {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; font-size: 0.85rem;
+  }
+  .skin-result .skin-name { font-weight: 600; }
+
+  /* watchlist table */
+  .wl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .wl-table th, .wl-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  .wl-table th { color: var(--text-secondary); font-weight: 500; font-size: 0.78rem; }
+  .wl-table tr:hover { background: rgba(74,158,255,0.05); }
+
+  /* modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 999; justify-content: center; align-items: center; }
+  .modal-overlay.show { display: flex; }
+  .modal {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; max-width: 480px; width: 90%;
+  }
+  .modal h3 { margin-bottom: 14px; }
+  .modal label { display: block; font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 4px; }
+  .modal input, .modal select {
+    width: 100%; padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); margin-bottom: 12px; font-size: 0.88rem;
+  }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+
+  .footer { text-align: center; color: var(--text-secondary); font-size: 0.75rem; padding: 14px; border-top: 1px solid var(--border); margin-top: 30px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span class="dot"></span>CS2 饰品行情监控</h1>
+  <div class="header-right">
+    <button class="btn btn-sm btn-outline" onclick="requestNotification()">开启桌面通知</button>
+    <span id="updateTime">--</span>
+    <button class="alert-badge" id="alertBadge" onclick="showAlerts()">0 条提醒</button>
+  </div>
+</div>
+
+<div class="container">
+
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('dashboard', this)">📊 大盘指数</button>
+    <button class="tab-btn" onclick="switchTab('watchlist', this)">⭐ 自选监控</button>
+    <button class="tab-btn" onclick="switchTab('compare', this)">📈 多指数对比</button>
+    <button class="tab-btn" onclick="switchTab('search', this)">🔍 饰品搜索</button>
+  </div>
+
+  <!-- Tab: Dashboard -->
+  <div id="tab-dashboard">
+    <div class="section-title">实时指数 · 点击卡片查看走势</div>
+    <div class="cards-grid" id="indexCards"></div>
+    <div class="charts-row">
+      <div class="panel">
+        <div class="section-title" id="chartTitle">24小时走势</div>
+        <div class="chart-box" id="mainChart"></div>
+      </div>
+      <div class="panel">
+        <div class="section-title">异动提醒</div>
+        <div id="alertsList"><div class="no-alerts">暂无提醒</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab: Watchlist -->
+  <div id="tab-watchlist" style="display:none;">
+    <div class="section-title">自选监控列表</div>
+    <div style="margin-bottom:12px; display:flex; gap:8px;">
+      <button class="btn btn-sm" onclick="openAddModal()">+ 添加监控</button>
+      <span style="color:var(--text-secondary);font-size:0.82rem;line-height:2;">在「大盘指数」或「饰品搜索」中点击 ⭐ 可快速添加</span>
+    </div>
+    <div class="panel">
+      <table class="wl-table" id="watchlistTable">
+        <thead><tr><th>名称</th><th>当前价格</th><th>日涨跌</th><th>预警阈值</th><th>操作</th></tr></thead>
+        <tbody><tr><td colspan="5" class="no-alerts">暂无自选</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Tab: Compare -->
+  <div id="tab-compare" style="display:none;">
+    <div class="section-title">多指数走势对比 (Ctrl+点击卡片添加对比)</div>
+    <div class="panel">
+      <div id="compareTags" style="margin-bottom:10px; display:flex; gap:6px; flex-wrap:wrap;"></div>
+      <div class="chart-box" id="compareChart" style="height:420px;"></div>
+    </div>
+  </div>
+
+  <!-- Tab: Search -->
+  <div id="tab-search" style="display:none;">
+    <div class="section-title">饰品搜索</div>
+    <div class="search-bar">
+      <input type="text" id="searchInput" placeholder="输入饰品名称，如 AK-47 | 红线 / M4A4 | 喧嚣杀戮 ..." onkeydown="if(event.key==='Enter')search()">
+      <button class="btn" onclick="search()">搜索</button>
+    </div>
+    <div class="search-results" id="searchResults"></div>
+  </div>
+
+</div>
+
+<!-- Add Watchlist Modal -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <h3>添加自选监控</h3>
+    <label>指数名称 (name_key)</label>
+    <input type="text" id="modalNameKey" placeholder="如: init, main_weapon, lease">
+    <label>显示名称</label>
+    <input type="text" id="modalName" placeholder="如: 饰品指数">
+    <label>预警阈值 (%)</label>
+    <select id="modalThreshold">
+      <option value="1.0">±1.0% (敏感)</option>
+      <option value="2.0" selected>±2.0% (中等)</option>
+      <option value="3.0">±3.0% (标准)</option>
+      <option value="5.0">±5.0% (大幅)</option>
+    </select>
+    <div class="modal-actions">
+      <button class="btn btn-outline" onclick="closeAddModal()">取消</button>
+      <button class="btn" onclick="addToWatchlist()">确认添加</button>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  数据来源: csqaq.com &nbsp;|&nbsp; 自动刷新: 60秒 &nbsp;|&nbsp; 当前时间: <span id="clock"></span>
+</div>
+
+<script>
+// ==================== 全局状态 ====================
+let indicesData = [];
+let selectedIndex = 'init';
+let mainChart = null, compareChart = null;
+let alerts = [];
+let compareKeys = [];
+let notificationGranted = false;
+
+// ==================== 初始化 ====================
+async function init() {
+  mainChart = echarts.init(document.getElementById('mainChart'));
+  compareChart = echarts.init(document.getElementById('compareChart'));
+  window.addEventListener('resize', () => { mainChart.resize(); compareChart.resize(); });
+
+  // 请求桌面通知权限
+  if ('Notification' in window && Notification.permission === 'granted') {
+    notificationGranted = true;
+  }
+
+  await refreshDashboard();
+  setInterval(refreshDashboard, 60000);
+  setInterval(refreshAlerts, 30000);
+  setInterval(() => {
+    document.getElementById('clock').textContent = new Date().toLocaleTimeString('zh-CN');
+  }, 1000);
+}
+
+function requestNotification() {
+  if (!('Notification' in window)) return alert('浏览器不支持桌面通知');
+  Notification.requestPermission().then(p => {
+    notificationGranted = (p === 'granted');
+    alert(notificationGranted ? '桌面通知已开启!' : '通知权限被拒绝');
+  });
+}
+
+function sendNotification(title, body) {
+  if (notificationGranted && document.hidden) {
+    new Notification(title, { body, icon: 'https://csqaq.com/logo.svg' });
+  }
+}
+
+// ==================== Tab 切换 ====================
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('[id^="tab-"]').forEach(d => d.style.display = 'none');
+  document.getElementById('tab-' + tab).style.display = '';
+  if (tab === 'compare') renderCompareChart();
+  if (tab === 'watchlist') renderWatchlist();
+}
+
+// ==================== 仪表盘 ====================
+async function refreshDashboard() {
+  try {
+    const r = await fetch('/api/dashboard');
+    const data = await r.json();
+    indicesData = data.indices || [];
+    document.getElementById('updateTime').textContent = '更新: ' + formatDate(data.last_update);
+
+    const badge = document.getElementById('alertBadge');
+    badge.textContent = (data.alert_count || 0) + ' 条提醒';
+    badge.className = 'alert-badge' + (data.alert_count > 0 ? ' has-alert' : '');
+
+    renderIndexCards();
+    renderCompareTags();
+    loadMainChart(selectedIndex);
+
+    // 桌面通知 (异动 > 2%)
+    const bigMovers = indicesData.filter(i => Math.abs(i.chg_rate || 0) > 2);
+    if (bigMovers.length > 0) {
+      sendNotification('CS2 行情异动', bigMovers.map(i => `${i.name}: ${i.chg_rate > 0 ? '+' : ''}${i.chg_rate.toFixed(2)}%`).join(', '));
+    }
+  } catch(e) { console.error('刷新失败:', e); }
+}
+
+function renderIndexCards() {
+  const container = document.getElementById('indexCards');
+  fetch('/api/watchlist').then(r => r.json()).then(wl => {
+    const watchedKeys = new Set(wl.map(w => w.name_key));
+
+    container.innerHTML = indicesData.map(idx => {
+      const cls = idx.chg_rate > 0.1 ? 'up' : (idx.chg_rate < -0.1 ? 'down' : 'neutral');
+      const arrow = idx.chg_rate > 0.1 ? '▲' : (idx.chg_rate < -0.1 ? '▼' : '─');
+      const sel = idx.name_key === selectedIndex ? ' selected' : '';
+      const watched = watchedKeys.has(idx.name_key) ? ' watched' : '';
+      const starCls = watchedKeys.has(idx.name_key) ? ' active' : '';
+      return `
+        <div class="index-card${sel}${watched}" onclick="selectIndex('${idx.name_key}')">
+          <div class="card-name">
+            ${idx.name}
+            <span class="watch-star ${starCls}" title="添加/取消自选" onclick="event.stopPropagation();toggleWatch('${idx.name_key}','${idx.name}')">⭐</span>
+          </div>
+          <div class="card-price">${idx.market_index?.toFixed(2) ?? '--'}</div>
+          <div class="card-change ${cls}">${arrow} ${idx.chg_num > 0 ? '+' : ''}${idx.chg_num?.toFixed(2) ?? '--'} (${idx.chg_rate > 0 ? '+' : ''}${idx.chg_rate?.toFixed(2) ?? '--'}%)</div>
+        </div>`;
+    }).join('');
+  });
+}
+
+function selectIndex(nameKey) {
+  selectedIndex = nameKey;
+  renderIndexCards();
+  loadMainChart(nameKey);
+}
+
+// ==================== 走势图 ====================
+async function loadMainChart(nameKey) {
+  const idxInfo = indicesData.find(i => i.name_key === nameKey);
+  document.getElementById('chartTitle').textContent = (idxInfo?.name || nameKey) + ' - 24小时走势';
+
+  try {
+    const r = await fetch('/api/history/' + nameKey + '?hours=24');
+    const history = await r.json();
+    if (history.length < 2) {
+      mainChart.setOption({
+        title: { text: '数据收集中...', left: 'center', top: 'center', textStyle: { color: '#8b949e' } },
+      });
+      return;
+    }
+
+    const times = history.map(h => h.captured_at.substring(5, 19).replace('T', ' '));
+    const values = history.map(h => h.market_index);
+    const isUp = values[values.length - 1] >= values[0];
+    const color = isUp ? '#27ae60' : '#e74c3c';
+
+    mainChart.setOption({
+      grid: { left: 60, right: 25, top: 15, bottom: 30 },
+      tooltip: {
+        trigger: 'axis', backgroundColor: '#21252b', borderColor: '#2c313a',
+        textStyle: { color: '#e0e0e0', fontSize: 13 },
+        formatter: p => `${p[0].axisValue}<br/>指数: <b>${p[0].value.toFixed(2)}</b>`
+      },
+      xAxis: {
+        type: 'category', data: times, axisLine: { lineStyle: { color: '#2c313a' } },
+        axisLabel: { color: '#8b949e', fontSize: 10, interval: Math.max(1, Math.floor(times.length / 8)) },
+      },
+      yAxis: {
+        type: 'value', axisLabel: { color: '#8b949e', fontSize: 11 },
+        splitLine: { lineStyle: { color: '#2c313a', type: 'dashed' } },
+      },
+      series: [{
+        type: 'line', data: values, smooth: true, symbol: 'none',
+        lineStyle: { color, width: 2.5 },
+        areaStyle: {
+          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: color.replace(')', ',0.25)').replace('rgb', 'rgba').replace('#27ae60', 'rgba(39,174,96').replace('#e74c3c', 'rgba(231,76,60,0.25)') },
+            { offset: 1, color: 'rgba(0,0,0,0)' }
+          ])
+        },
+        markLine: {
+          silent: true, symbol: 'none',
+          data: [{ yAxis: values[0], lineStyle: { color: '#8b949e', type: 'dashed', width: 1 } }],
+          label: { formatter: '开盘 {c}', color: '#8b949e', fontSize: 10 }
+        }
+      }],
+    });
+  } catch(e) { console.error('图表加载失败:', e); }
+}
+
+// ==================== 异动提醒 ====================
+async function refreshAlerts() {
+  try {
+    const r = await fetch('/api/alerts?limit=15');
+    const oldLen = alerts.length;
+    alerts = await r.json();
+    renderAlerts();
+    // 新提醒桌面通知
+    if (alerts.length > oldLen && oldLen > 0) {
+      const latest = alerts[0];
+      sendNotification('CS2 行情异动', latest.message);
+    }
+  } catch(e) {}
+}
+
+function renderAlerts() {
+  const container = document.getElementById('alertsList');
+  if (!alerts.length) { container.innerHTML = '<div class="no-alerts">暂无提醒</div>'; return; }
+  container.innerHTML = alerts.map(a => `
+    <div class="alert-item${a.message.includes('[自选]') ? ' watchlist' : ''}">
+      <div>${a.message}</div>
+      <div class="alert-time">${formatDate(a.created_at)}</div>
+    </div>
+  `).join('');
+}
+
+async function showAlerts() {
+  await fetch('/api/alerts/seen', { method: 'POST' });
+  document.getElementById('alertBadge').classList.remove('has-alert');
+  document.getElementById('alertBadge').textContent = '0 条提醒';
+}
+
+// ==================== 自选监控 ====================
+async function toggleWatch(nameKey, name) {
+  try {
+    // 检查是否已存在
+    const wl = await fetch('/api/watchlist').then(r => r.json());
+    const exists = wl.find(w => w.name_key === nameKey);
+
+    if (exists) {
+      await fetch('/api/watchlist/remove', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name_key: nameKey })
+      });
+    } else {
+      await fetch('/api/watchlist/add', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name_key: nameKey, name: name, threshold: 2.0 })
+      });
+    }
+    renderIndexCards();
+    renderWatchlist();
+  } catch(e) { console.error(e); }
+}
+
+async function renderWatchlist() {
+  const tbody = document.querySelector('#watchlistTable tbody');
+  try {
+    const wl = await fetch('/api/watchlist').then(r => r.json());
+    if (!wl.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="no-alerts">暂无自选</td></tr>';
+      return;
+    }
+    tbody.innerHTML = wl.map(w => `
+      <tr>
+        <td><b>${w.name}</b></td>
+        <td>${w.current_price?.toFixed(2) ?? '--'}</td>
+        <td class="${(w.chg_rate || 0) > 0.1 ? 'card-change up' : ((w.chg_rate || 0) < -0.1 ? 'card-change down' : '')}">
+          ${w.chg_rate ? (w.chg_rate > 0 ? '+' : '') + w.chg_rate.toFixed(2) + '%' : '--'}
+        </td>
+        <td>±${w.threshold}%</td>
+        <td>
+          <button class="btn btn-sm btn-outline" onclick="removeWatch('${w.name_key}')">移除</button>
+        </td>
+      </tr>
+    `).join('');
+  } catch(e) { console.error(e); }
+}
+
+async function removeWatch(nameKey) {
+  await fetch('/api/watchlist/remove', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name_key: nameKey })
+  });
+  renderWatchlist();
+  renderIndexCards();
+}
+
+function openAddModal() {
+  document.getElementById('addModal').classList.add('show');
+}
+function closeAddModal() {
+  document.getElementById('addModal').classList.remove('show');
+}
+async function addToWatchlist() {
+  const nk = document.getElementById('modalNameKey').value.trim();
+  const name = document.getElementById('modalName').value.trim() || nk;
+  const threshold = parseFloat(document.getElementById('modalThreshold').value);
+  if (!nk) return;
+
+  await fetch('/api/watchlist/add', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name_key: nk, name, threshold })
+  });
+  closeAddModal();
+  renderWatchlist();
+  renderIndexCards();
+}
+
+// ==================== 多指数对比 ====================
+function renderCompareTags() {
+  if (!indicesData.length) return;
+  const container = document.getElementById('compareTags');
+  container.innerHTML = indicesData.map(idx => {
+    const active = compareKeys.includes(idx.name_key);
+    return `<span style="padding:4px 10px;border-radius:12px;font-size:0.78rem;cursor:pointer;border:1px solid ${active?'var(--accent)':'var(--border)'};color:${active?'var(--accent)':'var(--text-secondary)'};background:${active?'var(--accent-glow)':'transparent'};" onclick="toggleCompare('${idx.name_key}')">${idx.name}</span>`;
+  }).join('');
+}
+
+function toggleCompare(nameKey) {
+  const idx = compareKeys.indexOf(nameKey);
+  if (idx >= 0) compareKeys.splice(idx, 1);
+  else if (compareKeys.length < 5) compareKeys.push(nameKey);
+  renderCompareTags();
+  renderCompareChart();
+}
+
+async function renderCompareChart() {
+  if (compareKeys.length === 0) {
+    compareChart.setOption({
+      title: { text: '点击上方标签添加对比指数 (最多5个)', left: 'center', top: 'center', textStyle: { color: '#8b949e' } },
+    });
+    return;
+  }
+
+  try {
+    const r = await fetch('/api/compare?keys=' + compareKeys.join(',') + '&hours=24');
+    const data = await r.json();
+
+    const colors = ['#4a9eff', '#27ae60', '#e74c3c', '#f39c12', '#9b59b6'];
+    const series = [];
+    let allTimes = [];
+
+    Object.entries(data).forEach(([nk, obj], i) => {
+      const vals = obj.data.map(d => d.market_index);
+      const times = obj.data.map(d => d.captured_at.substring(5, 19).replace('T', ' '));
+      if (times.length > allTimes.length) allTimes = times;
+
+      // 归一化: 以第一条数据为基准 100
+      const base = vals[0] || 100;
+      const normalized = vals.map(v => (v / base) * 100);
+
+      series.push({
+        name: obj.name, type: 'line', data: normalized,
+        smooth: true, symbol: 'none',
+        lineStyle: { color: colors[i % colors.length], width: 2 },
+      });
+    });
+
+    compareChart.setOption({
+      grid: { left: 60, right: 30, top: 40, bottom: 30 },
+      legend: { top: 8, textStyle: { color: '#8b949e', fontSize: 11 } },
+      tooltip: { trigger: 'axis', backgroundColor: '#21252b', borderColor: '#2c313a', textStyle: { color: '#e0e0e0' } },
+      xAxis: {
+        type: 'category', data: allTimes, axisLine: { lineStyle: { color: '#2c313a' } },
+        axisLabel: { color: '#8b949e', fontSize: 10, interval: Math.max(1, Math.floor(allTimes.length / 8)) },
+      },
+      yAxis: {
+        type: 'value', name: '归一化 (基=100)', nameTextStyle: { color: '#8b949e', fontSize: 11 },
+        axisLabel: { color: '#8b949e', fontSize: 11 },
+        splitLine: { lineStyle: { color: '#2c313a', type: 'dashed' } },
+      },
+      series,
+    });
+  } catch(e) { console.error(e); }
+}
+
+// ==================== 搜索 ====================
+async function search() {
+  const q = document.getElementById('searchInput').value.trim();
+  if (!q) return;
+
+  const container = document.getElementById('searchResults');
+  container.innerHTML = '<div class="no-alerts"><span class="spinner" style="display:inline-block;width:16px;height:16px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin 0.7s linear infinite;margin-right:6px;vertical-align:middle;"></span> 搜索中...</div>';
+
+  try {
+    const r = await fetch('/api/search?q=' + encodeURIComponent(q));
+    const results = await r.json();
+    if (!results || !results.length) {
+      container.innerHTML = '<div class="no-alerts">未找到匹配的饰品 (可能需要 ApiToken)</div>';
+      return;
+    }
+    container.innerHTML = results.map(skin => `
+      <div class="skin-result">
+        <div class="skin-name">${skin.name || skin.goodsName || skin.id}</div>
+        <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:4px;">
+          ${skin.salePrice ? '¥' + (skin.salePrice/100).toFixed(2) : '价格未知'}
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    container.innerHTML = '<div class="no-alerts">搜索失败</div>';
+  }
+}
+
+// ==================== 工具 ====================
+function formatDate(iso) {
+  if (!iso) return '--';
+  const d = new Date(iso);
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+// 启动
+init();
+</script>
+</body>
+</html>
