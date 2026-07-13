@@ -7,8 +7,12 @@ CF="/tmp/cloudflared"
 # Download cloudflared if not present
 if [ ! -f "$CF" ]; then
     echo "[start] Downloading cloudflared..."
-    curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o "$CF"
-    chmod +x "$CF"
+    python3 -c "
+import urllib.request, os
+url='https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64'
+urllib.request.urlretrieve(url, '$CF')
+os.chmod('$CF', 0o755)
+"
     echo "[start] cloudflared ready"
 fi
 
