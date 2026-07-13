@@ -644,11 +644,11 @@ def api_tunnel_url():
 
 @app.route("/echarts.min.js")
 def echarts_js():
-    return send_from_directory(".", "echarts.min.js")
+    return send_from_directory("static", "echarts.min.js")
 
 @app.route("/")
 def index():
-    return send_from_directory(".", "cs_monitor_frontend.html")
+    return send_from_directory("static", "index.html")
 
 
 # ─── 启动 ────────────────────────────────
