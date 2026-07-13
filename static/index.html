@@ -124,6 +124,7 @@ a{color:var(--accent)}
 <div class="topbar">
   <h1><span class="dot"></span>CS2 市场监控 v2</h1>
   <div class="topbar-right">
+    <a id="tunnelUrl" href="#" target="_blank" style="display:none;color:var(--green);font-size:.72rem;text-decoration:none;border:1px solid var(--green);padding:2px 8px;border-radius:10px" title="手机访问地址(Cloudflare Tunnel)">手机访问</a>
     <button class="btn btn-s btn-o" onclick="Notification.requestPermission()">桌面通知</button>
     <span id="clock">--</span>
     <button class="badge" id="badge" onclick="showAlerts()">0</button>
@@ -482,6 +483,9 @@ function fmt(iso){if(!iso)return'--';var d=new Date(iso);var p=function(n){retur
 // ========== BOOT ==========
 (function start(){
   if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',start);return}
+  fetch('/api/tunnel-url').then(function(r){return r.json()}).then(function(d){
+    if(d.url){var el=document.getElementById('tunnelUrl');el.href=d.url;el.textContent='手机访问';el.style.display=''}
+  });
   loadDash();setInterval(loadDash,60000);
   setTimeout(function(){selCard('init')},1500);
   setTimeout(function(){loadRank('rise')},3000);

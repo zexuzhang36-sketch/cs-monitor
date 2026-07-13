@@ -27,6 +27,16 @@ DB_PATH = Path(__file__).parent / "cs_monitor.db"
 API_TOKEN = "XGCWH1F7Y8U3P8X7L3F7G6X3"
 HEADERS = {"User-Agent": "Mozilla/5.0", "Accept": "application/json", "ApiToken": API_TOKEN}
 
+# 全局API限流 (1次/秒)
+_last_api_call = 0
+def api_wait():
+    global _last_api_call
+    now = time.time()
+    elapsed = now - _last_api_call
+    if elapsed < 1.1:
+        time.sleep(1.1 - elapsed)
+    _last_api_call = time.time()
+
 # 缓存
 _cache = {}
 _cache_ttl = {}
@@ -242,6 +252,7 @@ def check_skin_volume():
     alerts = 0
     for skin in skins:
         try:
+            api_wait()
             r = requests.get(f"{BASE_URL}/info/good", params={"id": skin["skin_id"]}, headers=HEADERS, timeout=10)
             if r.status_code != 200: continue
             gd = r.json().get("data", {}).get("goods_info", {})
@@ -294,7 +305,7 @@ def check_skin_volume():
                 _save_alert(skin["skin_name"], "volume_spike", msg)
                 send_alert_notification(msg)
                 print(f"[VOLUME] {msg}")
-            time.sleep(0.15)
+            # rate limited by api_wait() above
         except Exception as e: print(f"[VOLUME] err {skin['skin_id']}: {e}")
     if alerts: print(f"[VOLUME] {alerts} alerts")
 
@@ -433,7 +444,7 @@ def api_rank_list():
     try:
         # use get_rank_list for rise/fall
         r = requests.post(f"{BASE_URL}/info/get_rank_list",
-                          json={"page": page, "pageSize": 20, "type": rtype}, headers=HEADERS, timeout=15)
+                          json={"page_index": page, "page_size": 20, "sort_by": rtype}, headers=HEADERS, timeout=15)
         if r.status_code == 200:
             data = r.json().get("data", {})
             items = data.get("data", []) if isinstance(data, dict) else []
@@ -616,6 +627,18 @@ def api_email_test():
         server.quit()
         return jsonify({"ok": True, "msg": "已发送"})
     except Exception as e: return jsonify({"ok": False, "msg": str(e)}), 500
+
+# ─── 隧道地址 ────────────────────────────
+
+@app.route("/api/tunnel-url")
+def api_tunnel_url():
+    try:
+        p = Path("/tmp/tunnel_url.txt")
+        if p.exists():
+            return jsonify({"url": p.read_text().strip()})
+    except Exception:
+        pass
+    return jsonify({"url": None})
 
 # ─── 静态文件 ────────────────────────────
 
